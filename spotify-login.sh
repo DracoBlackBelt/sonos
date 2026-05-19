@@ -69,22 +69,21 @@ echo "Got tokens. Writing to Toon..."
 # Write tokens to dedicated token file (survives settings resets)
 $TOON "echo '{\"refresh_token\":\"'\"$REFRESH_TOKEN\"'\",\"access_token\":\"'\"$ACCESS_TOKEN\"'\"}' > $TOKEN_FILE"
 
-# Update main settings file: set status + credentials
-$TOON "python3 -c \"
-import json
+# Update main settings file locally (Toon may not have python3) and push to Toon
+UPDATED_SETTINGS=$(echo "$SETTINGS_JSON" | python3 -c "
+import json, sys
 try:
-    with open('$SETTINGS', 'r') as f:
-        s = json.load(f)
-except:
+    s = json.load(sys.stdin)
+except Exception:
     s = {}
 s['spotifyStatus'] = 'configured'
-s['spotifyClientId'] = '$CLIENT_ID'
-s['spotifyClientSecret'] = '$CLIENT_SECRET'
-s['spotifyRefreshToken'] = '$REFRESH_TOKEN'
-with open('$SETTINGS', 'w') as f:
-    json.dump(s, f)
-print('Settings updated.')
-\""
+s['spotifyClientId'] = sys.argv[1]
+s['spotifyClientSecret'] = sys.argv[2]
+s['spotifyRefreshToken'] = sys.argv[3]
+print(json.dumps(s))
+" "$CLIENT_ID" "$CLIENT_SECRET" "$REFRESH_TOKEN")
+printf '%s' "$UPDATED_SETTINGS" | $TOON "cat > $SETTINGS"
+echo "Settings updated."
 
 echo "Restarting Toon app..."
 $TOON "reboot" 2>/dev/null || true
