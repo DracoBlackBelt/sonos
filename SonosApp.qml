@@ -44,6 +44,7 @@ App {
 	property string spotifyRefreshToken : ""
 	property string spotifyDisplayName : ""
 	property variant spotifyPlaylists : []      // [{name, uri}]
+	property variant recentlyPlayed : []        // [{name, uri}], last 10 played via Spotify search
 
 	property string sonosName
 	property string sonosNameVoetbalApp
@@ -203,6 +204,7 @@ App {
 		settings["spotifyClientSecret"] = spotifyToken["spotifyClientSecret"];
 		settings["spotifyRefreshToken"] = spotifyRefreshToken;
 		settings["spotifyDisplayName"] = spotifyDisplayName;
+		settings["recentlyPlayed"] = recentlyPlayed;
 
 		var saveFile = new XMLHttpRequest();
 		saveFile.open("PUT", "file:///mnt/data/tsc/sonos.userSettings.json");
@@ -244,6 +246,7 @@ App {
 		if (settings['spotifyClientSecret']) spotifyToken["spotifyClientSecret"] = settings['spotifyClientSecret'];
 		if (settings['spotifyRefreshToken']) spotifyRefreshToken = settings['spotifyRefreshToken'];
 		if (settings['spotifyDisplayName']) spotifyDisplayName = settings['spotifyDisplayName'];
+		if (settings['recentlyPlayed']) recentlyPlayed = settings['recentlyPlayed'];
 
 		if (settings['path']) {
 			connectionPath = (settings['path']);
@@ -386,6 +389,18 @@ App {
 		spotifyPlaylists = [];
 		spotifyToken["access_token"] = "";
 		tokenRefreshTimer.stop();
+		saveSettings();
+	}
+
+	function addToRecentlyPlayed(name, uri) {
+		var newList = [];
+		newList.push({name: name, uri: uri});
+		for (var i = 0; i < recentlyPlayed.length && newList.length < 10; i++) {
+			if (recentlyPlayed[i]["uri"] !== uri) {
+				newList.push(recentlyPlayed[i]);
+			}
+		}
+		recentlyPlayed = newList;
 		saveSettings();
 	}
 
