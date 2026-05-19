@@ -1,3 +1,11 @@
+1.4.0
+- Spotify login via OAuth Authorization Code flow (replaces client credentials)
+- Spotify playlists now loaded directly from your own account after login
+- New login screen: enter credentials, visit auth URL, paste code — done
+- Removed manual Spotify user ID management
+- Fixed: playlist search results were incorrectly showing album data
+- Simplified menu screen Spotify section
+
 1.3.4
 - volume buttons react a bit less 'agressive'
 - added Spotify music search function when spotify account is connected
