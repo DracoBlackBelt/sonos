@@ -223,7 +223,7 @@ Screen {
 			searchResultsSimpleList.removeAll();
 
 			for (var i = 0; i < playlistCount ; i++) {
-				tmpResults.push({"name": searchResults["albums"]["items"][i]["name"] , "uri":searchResults["albums"]["items"][i]["uri"]}); 
+				tmpResults.push({"name": searchResults["playlists"]["items"][i]["name"] , "uri":searchResults["playlists"]["items"][i]["uri"]});
 				searchResultsSimpleList.addDevice(i);
 			}
 			displayResults = tmpResults;

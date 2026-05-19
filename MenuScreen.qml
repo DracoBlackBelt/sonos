@@ -191,7 +191,7 @@ Screen {
 			family: qfont.regular.name
 		}
 		wrapMode: Text.WordWrap
-		text: app.spotifyStatus + "Sonos icoon zichtbaar op systray?"
+		text: "Sonos icoon zichtbaar op systray?"
 	}
 	
 		OnOffToggle {
@@ -267,63 +267,24 @@ Screen {
 		visible: voetbalToggle.isSwitchedOn
 	}
 		
-	//Next part is to link Spotify accounts to this app for music playback on Sonos.
-
-
+	// Spotify section
 	StandardButton {
-		id: editSpotifyUsersButton
-		width: isNxt ? 300 : 240
+		id: spotifyButton
+		width: isNxt ? 400 : 320
 		radius: 5
-		text: "Edit Spotify accounts"
 		fontPixelSize: isNxt ? 25 : 20
 		color: colors.background
+		text: app.spotifyStatus == "configured"
+			? "Spotify: " + (app.spotifyDisplayName.length > 0 ? app.spotifyDisplayName : "verbonden")
+			: "Verbind met Spotify"
 		anchors {
 			top: btnZone.bottom
 			topMargin: 20
 			left: voetbalText.left
 		}
-		visible: (app.spotifyStatus == "configured")
 		onClicked: {
-			if (app.spotifyEditUsersScreen)	
-				app.spotifyEditUsersScreen.show();
-		}
-	}
-
-	TextEdit {
-		id: explainerText
-		width: isNxt ? 625 : 500
-		height: isNxt ? 300 : 240
-		wrapMode: Text.WordWrap
-		textFormat: TextEdit.RichText
-	        readOnly:true
-		text: "Om Spotify playlists te kunnen afspelen op de Sonos speakers moeten de gebruikersnamen van de spotify accounts worden ingevoerd. Deze kan je vinden in de account informatie op de Spotify app, een Spotify gebruikersnaam is typisch 34 karakters lang. Om een playlist hier te kunnen tonen moet de playlist openbaar zijn gemaakt en aan je Spotify profiel zijn toegevoegd."
-		font.family: qfont.semiBold.name
-		font.pixelSize: isNxt ? 20 : 16
-		anchors {
-			top: editSpotifyUsersButton.top
-			topMargin: isNxt ? -40 : -32
-			left: editSpotifyUsersButton.right
-			leftMargin: 10
-		}
-		visible: (app.spotifyStatus == "configured")
-	}
-
-	StandardButton {
-		id: editSpotifyCredentialsButton
-		width: isNxt ? 375 : 300
-		radius: 5
-		text: "Enable Spotify integratie"
-		fontPixelSize: isNxt ? 25 : 20
-		color: colors.background
-		anchors {
-			top: btnZone.bottom
-			topMargin: 20
-			left: voetbalText.left
-		}
-		visible: (app.spotifyStatus !== "configured")
-		onClicked: {
-			if (app.spotifyCredentialsScreen)	
-				app.spotifyCredentialsScreen.show();
+			if (app.spotifyLoginScreen)
+				app.spotifyLoginScreen.show();
 		}
 	}
 

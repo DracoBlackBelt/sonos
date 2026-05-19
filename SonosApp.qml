@@ -15,25 +15,19 @@ App {
 	property url menuScreenUrl : "MenuScreen.qml"
 	property url messageScreenUrl : "MessageScreen.qml"
 	property url mediaSelectZoneUrl : "MediaSelectZone.qml"
-	property url spotifySelectUserUrl : "SpotifySelectUser.qml"
+	property url spotifyLoginScreenUrl : "SpotifyLoginScreen.qml"
+	property url spotifyMusicSearchScreenUrl : "SpotifyMusicSearchScreen.qml"
 	property url tileUrl : "SonosTile.qml"
 	property url tileUrlControl : "SonosMiniControlTile.qml"
 	property url thumbnailIcon: "qrc:/tsc/SonosThumb.png"
-	property url spotifyEditUsersScreenUrl : "SpotifyEditUsersScreen.qml"
-	property url spotifyCredentialsScreenUrl : "SpotifyCredentialsScreen.qml"
-	property url spotifyMusicSearchScreenUrl : "SpotifyMusicSearchScreen.qml"
-	property SpotifyMusicSearchScreen spotifyMusicSearchScreen 
-	property SpotifyEditUsersScreen spotifyEditUsersScreen 
-	property SpotifyCredentialsScreen spotifyCredentialsScreen 
+	property SpotifyLoginScreen spotifyLoginScreen
+	property SpotifyMusicSearchScreen spotifyMusicSearchScreen
 	property MenuScreen menuScreen
 	property MediaScreen mediaScreen
 	property MessageScreen messageScreen
 	property MediaSelectZone mediaSelectZone
 	property FavoritesScreen favoritesScreen
-	property SpotifySelectUser spotifySelectUser
 
-
-	//next property's are used for the visibility of the systray icon.
 	property SystrayIcon mediaTray
 	property bool showSonosIcon : true
 	property bool playFootballScores : true
@@ -45,14 +39,12 @@ App {
 	property variant favourites : []
 	property variant queue : []
 	property variant sonoslist : []
-	property variant spotifyUserNames : []
-	property variant spotifyUserIDs : []
+
 	property string spotifyStatus : "toBeConfigured"
-	property bool showSpotifyConfigMessage  : true
+	property string spotifyRefreshToken : ""
+	property string spotifyDisplayName : ""
+	property variant spotifyPlaylists : []      // [{name, uri}]
 
-	property int selectedPlaylistUser : 0  // (0 = Sonos, >0 is a Spotify user account)
-
-	property string playlistSource : ""
 	property string sonosName
 	property string sonosNameVoetbalApp
 	property string zoneToSelect
@@ -75,12 +67,11 @@ App {
 			"messageVolume" : "",
 			"messageSonosName" : "",
 			"voetbalTussenstanden" : "",
-			"selectedPlaylistUser" : 0,
-			"spotifyUserNames" : [],
-			"spotifyUserIDs" : [],
 			"spotifyStatus" : "",
 			"spotifyClientId" : "",
-			"spotifyClientSecret" : ""
+			"spotifyClientSecret" : "",
+			"spotifyRefreshToken" : "",
+			"spotifyDisplayName" : ""
 		}
 
 	property variant spotifyToken : {
@@ -88,20 +79,16 @@ App {
 			"spotifyClientSecret" : "",
 			"access_token" : ""
 		}
-	property string musicSource : "Sonos"   // either "Sonos"or "Spotify"
 
-		// variables for playing the selected text
 	property variant messageTextArray : ["Hallo","Hallo daar, het eten staat klaar"]
 	property string messageSonosName : "Alle"
 	property int messageVolume : 20
 	property string messageText
 	property int trackDuration
-	property int trackElapsedTime 
+	property int trackElapsedTime
 	property bool showSlider : false
 	property bool showSliderTime : false
 
-
-	//this is the main property for the complete Sonos App!
 	property string connectionPath
 
 	FileIO {
@@ -114,26 +101,22 @@ App {
 		property url favoritesScreenUrl : "FavoritesScreen.qml"
 		property url mediaScreenUrl : "MediaScreen.qml"
 	}
-	
+
 	function init() {
 		registry.registerWidget("systrayIcon", trayUrl, this, "mediaTray");
 		registry.registerWidget("screen", p.mediaScreenUrl, this, "mediaScreen");
 		registry.registerWidget("screen", p.favoritesScreenUrl, this, "favoritesScreen");
 		registry.registerWidget("screen", menuScreenUrl, this, "menuScreen");
 		registry.registerWidget("screen", messageScreenUrl, this, "messageScreen");
-		registry.registerWidget("screen", spotifySelectUserUrl, this, "spotifySelectUser");
 		registry.registerWidget("screen", mediaSelectZoneUrl, this, "mediaSelectZone");
-		registry.registerWidget("screen", spotifyEditUsersScreenUrl, this, "spotifyEditUsersScreen");
+		registry.registerWidget("screen", spotifyLoginScreenUrl, this, "spotifyLoginScreen");
 		registry.registerWidget("screen", spotifyMusicSearchScreenUrl, this, "spotifyMusicSearchScreen");
-		registry.registerWidget("screen", spotifyCredentialsScreenUrl, this, "spotifyCredentialsScreen");
 		registry.registerWidget("menuItem", null, this, null, {objectName: "sonosMenuItem", label: qsTr("Sonos"), image: thumbnailIcon, screenUrl: menuScreenUrl, weight: 120});
 		registry.registerWidget("tile", tileUrl, this, null, {thumbLabel: qsTr("Sonos"), thumbIcon: thumbnailIcon, thumbCategory: "general", thumbWeight: 30, baseTileWeight: 10, thumbIconVAlignment: "center"});
 	}
-	
-	//this function needs to be started after the app is booted.
+
 	Component.onCompleted: {
 		readSettings();
-
 	}
 
 	Connections {
@@ -151,8 +134,6 @@ App {
 		}
 	}
 
-	
-	//this will update the found zones in your sonos HTTP API and write it to ZoneItemsJS, but also push it to the new Array which is used by the whole application.
 	function updateAvailableZones() {
 		var newArray = [];
 		var xmlhttp = new XMLHttpRequest();
@@ -165,9 +146,7 @@ App {
 					sonosNameIsGroup = false;
 					if (response.length > 0) {
 						for (var i = 0; i < response.length; i++) {
-								// determine group or single room
 							var tmpGroupFlag = (response[i]["members"].length > 1);
-								// update groupflag for zone from settingsfile
 							if (tmpSonosName == response[i]["coordinator"]["roomName"]) {
 								sonosName = tmpSonosName;
 								sonosNameIsGroup = tmpGroupFlag;
@@ -175,11 +154,11 @@ App {
 							newArray.push({name: response[i]["coordinator"]["roomName"], isGroup: tmpGroupFlag});
 						}
 						sonoslist = newArray;
-					} 
+					}
 					if (sonosName.length < 1) {
 						sonosName = newArray[0]['name'];
 						sonosNameIsGroup = newArray[0]['isGroup'];
-					} 
+					}
 				}
 			}
 		}
@@ -187,7 +166,6 @@ App {
 		xmlhttp.send();
 	}
 
-	//this is the save of the toggle which could be found in the menuscreen.
 	function saveshowSonosIcon(text) {
 		showSonosIcon = (text == "Yes");
    		saveSettings();
@@ -198,26 +176,14 @@ App {
 		}
 	}
 
-	//this is the save of the voetbal toggle which could be found in the menuscreen.
 	function saveplayScores(text) {
 		playFootballScores = (text == "Yes");
    		saveSettings();
 	}
-	
-	function saveSettings() {
 
-		var tmpTrayIcon = "";
-		if (showSonosIcon == true) {
-			tmpTrayIcon = "true";
-		} else {
-			tmpTrayIcon = "false";
-		}
-		var tmpVoetbal = "";
-		if (playFootballScores == true) {
-			tmpVoetbal = "true";
-		} else {
-			tmpVoetbal = "false";
-		}
+	function saveSettings() {
+		var tmpTrayIcon = showSonosIcon ? "true" : "false";
+		var tmpVoetbal = playFootballScores ? "true" : "false";
 
 		settings["showSonosIcon"] = tmpTrayIcon;
 		settings["sonosName"] = sonosName;
@@ -227,23 +193,18 @@ App {
 		settings["messageSonosName"] = messageSonosName;
 		settings["messageVolume"] = messageVolume;
 		settings["voetbalTussenstanden"] = tmpVoetbal;
-		settings["selectedPlaylistUser"] = selectedPlaylistUser;
-		settings["spotifyUserNames"] = spotifyUserNames;
-		settings["spotifyUserIDs"] = spotifyUserIDs;
 		settings["spotifyStatus"] = spotifyStatus;
-		settings["spotifyClientId"] = spotifyToken["spotifyClientId"]
-		settings["spotifyClientSecret"] = spotifyToken["spotifyClientSecret"]
+		settings["spotifyClientId"] = spotifyToken["spotifyClientId"];
+		settings["spotifyClientSecret"] = spotifyToken["spotifyClientSecret"];
+		settings["spotifyRefreshToken"] = spotifyRefreshToken;
+		settings["spotifyDisplayName"] = spotifyDisplayName;
 
 		var saveFile = new XMLHttpRequest();
 		saveFile.open("PUT", "file:///mnt/data/tsc/sonos.userSettings.json");
 		saveFile.send(JSON.stringify(settings));
 	}
-	
-	//In this read function you'll find the execution of the visibility of the systray icon.
+
 	function readSettings() {
-
-		//read user settings
-
 		var settingsString = sonosSettingsFile.read();
 		settings = JSON.parse(settingsString);
 		if (settings['showSonosIcon']) showSonosIcon = (settings['showSonosIcon'] == "true");
@@ -253,17 +214,11 @@ App {
 		if (settings['messageSonosName']) messageSonosName = (settings['messageSonosName']);
 		if (settings['messageText']) messageTextArray = (settings['messageText']);
 		if (settings['voetbalTussenstanden']) playFootballScores = (settings['voetbalTussenstanden'] == "true");
-		if (settings['selectedPlaylistUser']) selectedPlaylistUser = settings['selectedPlaylistUser'];
-		if (selectedPlaylistUser == 0) {
-			musicSource = "Sonos"
-		} else {
-			musicSource = "Spotify"
-		}
-		if (settings['spotifyUserNames']) spotifyUserNames= settings['spotifyUserNames'];
-		if (settings['spotifyUserIDs']) spotifyUserIDs= settings['spotifyUserIDs'];
-		if (settings['spotifyStatus']) spotifyStatus= settings['spotifyStatus'];
+		if (settings['spotifyStatus']) spotifyStatus = settings['spotifyStatus'];
 		if (settings['spotifyClientId']) spotifyToken["spotifyClientId"] = settings['spotifyClientId'];
 		if (settings['spotifyClientSecret']) spotifyToken["spotifyClientSecret"] = settings['spotifyClientSecret'];
+		if (settings['spotifyRefreshToken']) spotifyRefreshToken = settings['spotifyRefreshToken'];
+		if (settings['spotifyDisplayName']) spotifyDisplayName = settings['spotifyDisplayName'];
 
 		if (settings['path']) {
 			connectionPath = (settings['path']);
@@ -275,33 +230,134 @@ App {
 			}
 			updateAvailableZones();
 		}
-		if (spotifyStatus == "configured") getSpotifyBearerToken();
+
+		if (spotifyStatus == "configured" && spotifyRefreshToken.length > 0) {
+			refreshSpotifyAccessToken();
+		}
 	}
 
+	// Build the Spotify authorization URL for the user to visit
+	function buildSpotifyAuthUrl() {
+		var clientId = spotifyToken["spotifyClientId"];
+		var scope = "playlist-read-private%20playlist-read-collaborative";
+		var redirectUri = "https%3A%2F%2Fexample.com";
+		return "https://accounts.spotify.com/authorize?client_id=" + clientId +
+			"&response_type=code" +
+			"&redirect_uri=" + redirectUri +
+			"&scope=" + scope;
+	}
 
-		//This part is to create the now playing image and to start all the functions which are required for using the sonos app correctly.
-		//When you are playing radio (no playlist) it have to check the station name and not the "track" name thats why you'll find this check.
-
-	function getSpotifyBearerToken() {
-
-		var xmlhttpSpot = new XMLHttpRequest();
-		xmlhttpSpot.onreadystatechange=function() {
-			if (xmlhttpSpot.readyState == 4) {
-				if (xmlhttpSpot.status == 200) {
-					var response = JSON.parse(xmlhttpSpot.responseText);
+	// Exchange authorization code for access + refresh tokens
+	function exchangeCodeForToken(code) {
+		var xmlhttp = new XMLHttpRequest();
+		xmlhttp.onreadystatechange = function() {
+			if (xmlhttp.readyState == 4) {
+				if (xmlhttp.status == 200) {
+					var response = JSON.parse(xmlhttp.responseText);
 					spotifyToken["access_token"] = response["access_token"];
+					spotifyRefreshToken = response["refresh_token"];
+					spotifyStatus = "configured";
+					saveSettings();
+					fetchSpotifyUserProfile();
+					fetchSpotifyPlaylists();
+					tokenRefreshTimer.stop();
+					tokenRefreshTimer.interval = 3300000;
+					tokenRefreshTimer.start();
+				} else {
+					spotifyStatus = "error";
 				}
 			}
 		}
-		xmlhttpSpot.open("POST", "https://accounts.spotify.com/api/token");
-                xmlhttpSpot.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-                xmlhttpSpot.setRequestHeader("Authorization", 'Basic ' + customBtoa(spotifyToken["spotifyClientId"] + ":" + spotifyToken["spotifyClientSecret"]));
-		xmlhttpSpot.send('grant_type=client_credentials');
-		tokenRefreshTimer.stop()
-		tokenRefreshTimer.interval = 3599000;
-		tokenRefreshTimer.start()
+		var body = "grant_type=authorization_code" +
+			"&code=" + code +
+			"&redirect_uri=https%3A%2F%2Fexample.com";
+		xmlhttp.open("POST", "https://accounts.spotify.com/api/token");
+		xmlhttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+		xmlhttp.setRequestHeader("Authorization", "Basic " + customBtoa(spotifyToken["spotifyClientId"] + ":" + spotifyToken["spotifyClientSecret"]));
+		xmlhttp.send(body);
 	}
- 
+
+	// Refresh the access token using the stored refresh token
+	function refreshSpotifyAccessToken() {
+		var xmlhttp = new XMLHttpRequest();
+		xmlhttp.onreadystatechange = function() {
+			if (xmlhttp.readyState == 4) {
+				if (xmlhttp.status == 200) {
+					var response = JSON.parse(xmlhttp.responseText);
+					spotifyToken["access_token"] = response["access_token"];
+					if (response["refresh_token"]) {
+						spotifyRefreshToken = response["refresh_token"];
+						saveSettings();
+					}
+					fetchSpotifyPlaylists();
+					tokenRefreshTimer.stop();
+					tokenRefreshTimer.interval = 3300000;
+					tokenRefreshTimer.start();
+				} else {
+					// Refresh token expired — require re-login
+					spotifyStatus = "toBeConfigured";
+					spotifyRefreshToken = "";
+					saveSettings();
+				}
+			}
+		}
+		var body = "grant_type=refresh_token&refresh_token=" + spotifyRefreshToken;
+		xmlhttp.open("POST", "https://accounts.spotify.com/api/token");
+		xmlhttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+		xmlhttp.setRequestHeader("Authorization", "Basic " + customBtoa(spotifyToken["spotifyClientId"] + ":" + spotifyToken["spotifyClientSecret"]));
+		xmlhttp.send(body);
+	}
+
+	// Fetch user's display name from Spotify profile
+	function fetchSpotifyUserProfile() {
+		var xmlhttp = new XMLHttpRequest();
+		xmlhttp.onreadystatechange = function() {
+			if (xmlhttp.readyState == 4) {
+				if (xmlhttp.status == 200) {
+					var response = JSON.parse(xmlhttp.responseText);
+					spotifyDisplayName = response["display_name"] || response["id"] || "";
+					saveSettings();
+				}
+			}
+		}
+		xmlhttp.open("GET", "https://api.spotify.com/v1/me");
+		xmlhttp.setRequestHeader("Authorization", "Bearer " + spotifyToken["access_token"]);
+		xmlhttp.send();
+	}
+
+	// Fetch the user's Spotify playlists and store as [{name, uri}]
+	function fetchSpotifyPlaylists() {
+		var xmlhttp = new XMLHttpRequest();
+		xmlhttp.onreadystatechange = function() {
+			if (xmlhttp.readyState == 4) {
+				if (xmlhttp.status == 200) {
+					var response = JSON.parse(xmlhttp.responseText);
+					var result = [];
+					var items = response["items"];
+					for (var i = 0; i < items.length; i++) {
+						if (items[i] && items[i]["name"] && items[i]["uri"]) {
+							result.push({name: items[i]["name"], uri: items[i]["uri"]});
+						}
+					}
+					spotifyPlaylists = result;
+				}
+			}
+		}
+		xmlhttp.open("GET", "https://api.spotify.com/v1/me/playlists?limit=50");
+		xmlhttp.setRequestHeader("Authorization", "Bearer " + spotifyToken["access_token"]);
+		xmlhttp.send();
+	}
+
+	// Disconnect Spotify — clear all tokens and reset status
+	function disconnectSpotify() {
+		spotifyStatus = "toBeConfigured";
+		spotifyRefreshToken = "";
+		spotifyDisplayName = "";
+		spotifyPlaylists = [];
+		spotifyToken["access_token"] = "";
+		tokenRefreshTimer.stop();
+		saveSettings();
+	}
 
 	function customBtoa(str) {
   		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
@@ -330,8 +386,6 @@ App {
   		return encoded;
 	}
 
-	//This part is to create the now playing image and to start all the functions which are required for using the sonos app correctly.
-	//When you are playing radio (no playlist) it have to check the station name and not the "track" name thats why you'll find this check.
 	function readSonosState() {
 		var xmlhttp = new XMLHttpRequest();
 		xmlhttp.onreadystatechange=function() {
@@ -347,7 +401,7 @@ App {
 						if (response['currentTrack']['artist']) actualArtist = response['currentTrack']['artist'];
 						if (response['currentTrack']['duration']) trackDuration = response['currentTrack']['duration'];
 						if (response['elapsedTime']) {
-							if (!mediaScreen.positionIndicatorDragActive) { //do not update elapsedTime when positionIndicator is being dragged
+							if (!mediaScreen.positionIndicatorDragActive) {
 								trackElapsedTime = response['elapsedTime'];
 								mediaScreen.positionIndicatorX = Math.floor((trackElapsedTime / trackDuration) * mediaScreen.positionIndicatorWidth);
 							}
@@ -368,7 +422,7 @@ App {
 						actualTitle = "";
 						if (response['playbackState'] == "PLAYING") {
 							actualTitle = response['currentTrack']['title'];
-						} 
+						}
 						if ('absoluteAlbumArtUri' in response['currentTrack']) {
 							var tmpNowPlayingImage = response['currentTrack']['absoluteAlbumArtUri'].replace("https://", "http://");
 						} else {
@@ -381,7 +435,7 @@ App {
 					if (actualTitle.substring(0,10) == "x-sonosapi") {
 						actualTitle = "";
 					}
-					
+
 					playbackState = response['playbackState'];
 					shuffleButtonVisible = response['playMode']['shuffle'];
 					shuffleOnButtonVisible = !shuffleButtonVisible;
@@ -391,7 +445,7 @@ App {
 						sonosTrackTimer.start()
 					} else {
 						sonosTrackTimer.stop()
-					} 
+					}
 				}
 			}
 		}
@@ -399,7 +453,6 @@ App {
 		xmlhttp.send();
 	}
 
-	//Required to use the Sonos HTTP API and to start every request in the functions.
 	function simpleSynchronous(request) {
 		var xmlhttp = new XMLHttpRequest();
 		xmlhttp.open("GET", request, true);
@@ -415,40 +468,19 @@ App {
 			}
 		}
 	}
-	
-	function deleteSpotifyAccount(itemIndex) {
-
-
-		// delete the item at index itemIndex from both arrays		
-		var tmpNames = [];
-		var tmpIDs = [];
-
-		for (var i = 0; i < spotifyUserNames.length; i++) {
-		if (i !== itemIndex) {		// skip the item to be deleted
-				tmpNames.push(spotifyUserNames[i]);
-				tmpIDs.push(spotifyUserIDs[i]);
-			}
-		}
-		spotifyUserNames= tmpNames;
-		spotifyUserIDs = tmpIDs;
-		selectedPlaylistUser = 0; //default back to Sonos playlist
-		saveSettings()
-	}
 
 	function addTrackTimer() {
 		trackElapsedTime = trackElapsedTime + 1;
 		if (trackElapsedTime > trackDuration) trackElapsedTime = trackDuration;
 		mediaScreen.positionIndicatorX = Math.floor((trackElapsedTime / trackDuration) * mediaScreen.positionIndicatorWidth);
-
 	}
 
-	
 	Timer {
-		id: tokenRefreshTimer // Tokens valid only for 1 hour
+		id: tokenRefreshTimer
 		triggeredOnStart: false
-		running: true
+		running: false
 		repeat: true
-		onTriggered: getSpotifyBearerToken()
+		onTriggered: refreshSpotifyAccessToken()
 	}
 
 	Timer {
@@ -459,12 +491,12 @@ App {
 		repeat: true
 		onTriggered: readSonosState()
 	}
-	
+
 	Timer {
 		id: sonosTrackTimer
 		interval: 1000
 		triggeredOnStart: false
-		running: false 
+		running: false
 		repeat: true
 		onTriggered: addTrackTimer()
 	}

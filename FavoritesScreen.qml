@@ -40,16 +40,10 @@ Screen {
 		updatePlaylists();
 	}
 	
-	//Required to use the Sonos HTTP API and to start every request in the functions.
 	function playlistHeaderText() {
-
-		if (app.selectedPlaylistUser == 0) {
-			return "Sonos"
-		} else {
-			return "Playlists van " + app.spotifyUserNames[app.selectedPlaylistUser -1]
-		}
+		return app.spotifyStatus == "configured" ? "Spotify playlists" : "Sonos playlists"
 	}
-	
+
 	//Required to use the Sonos HTTP API and to start every request in the functions.
 	function simpleSynchronous(request) {
 		pageThrobber.visible = true;
@@ -99,23 +93,19 @@ Screen {
 		width: 450
 	}
 
-	StandardButton {
-		id: playlistUserButton
-		width: isNxt ? 325 : 260
-		radius: 5
-		text: playlistHeaderText()
-		fontPixelSize: isNxt ? 20 : 16
-		color: colors.background
+	Text {
+		id: playlistHeaderLabel
+		text: app.spotifyStatus == "configured" ? "Spotify playlists" : "Sonos playlists"
+		font.pixelSize: isNxt ? 20 : 16
+		font.family: qfont.regular.name
+		font.bold: true
+		wrapMode: Text.WordWrap
 		anchors {
-			top: parent.top
-			topMargin: isNxt ? 20 : 16
+			top: playlistScrollableSimpleList.top
+			topMargin: isNxt ? -35 : -28
 			left: playlistScrollableSimpleList.left
 		}
-
-		onClicked: {
-			if (app.spotifySelectUser)	
-				app.spotifySelectUser.show();
-		}
+		width: isNxt ? 450 : 360
 	}
 
 	
@@ -241,31 +231,27 @@ Screen {
 		}
 	}
 
-	//This is the delegate of the scrollable list which have the input of the function "updateFavoriteslist"
 	Component {
 		id: playlistDelegate
-		//to make the list clickable
 		Item {
 			width: isNxt ? 450 : 360
-			height: isNxt ? 50 : 40	
+			height: isNxt ? 50 : 40
 			StandardButton {
-				id: playlistButtom
+				id: playlistButton
 				radius: 5
 				text: app.playlists[item]['name']
 				width: isNxt ? 350 : 280
 				anchors {
 					top: parent.top
 				}
-
 				onClicked: {
-					simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/clearqueue");
-					if (app.musicSource == "Spotify") {
-						simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/spotify/now/"+app.playlistsURI[index]);
+					if (app.spotifyStatus == "configured") {
+						simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/spotify/now/"+app.playlistsURI[item]);
 					} else {
-						simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/playlist/"+listItemText.text);
+						simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/playlist/"+app.playlists[item]['name']);
 					}
 				}
-			}			
+			}
 		}
 	}
 
@@ -300,71 +286,53 @@ Screen {
 		xmlhttp.send();
 	}
 	
-	//Fill the file: FavoriteslistItemsJS with only the item "Name" and also manage a little bit the scrollable list (with refreshing it). This has also the counter function.
 	function updatePlaylists() {
-
-		if (app.selectedPlaylistUser > 0 ) {   // spotify users
-			if (app.spotifyStatus == "configured") {
-				var xmlhttpSpot = new XMLHttpRequest();	
-				xmlhttpSpot.onreadystatechange=function() {
-					if (xmlhttpSpot.readyState == 4) {
-
-						if (xmlhttpSpot.status == 200) {
-	
-							var response = JSON.parse(xmlhttpSpot.responseText);
-							playlistScrollableSimpleList.removeAll();
-	
-							if (response["items"].length > 0) {
-								var tmpplaylists = [];
-								var tmpplaylistsURI = [];
-								for (var i = 0; i < response["items"].length; i++) {
-									tmpplaylists.push({"name": response["items"][i]["name"]}); 
-									tmpplaylistsURI.push(response["items"][i]["uri"]); 
-									playlistScrollableSimpleList.addDevice(i);
-								}
-								app.playlists = tmpplaylists;
-								app.playlistsURI = tmpplaylistsURI;
-								playlistScrollableSimpleList.refreshView();
-								if (playlistScrollableSimpleList.currentPage == -1) {
-									playlistScrollableSimpleList.scrollToPage(0);
-								}
-							} 
-							pageThrobber.visible = false;
-							counterList = response["items"].length;
-						}
-					}
+		if (app.spotifyStatus == "configured") {
+			// Use already-fetched Spotify playlists from app state
+			playlistScrollableSimpleList.removeAll();
+			var spotList = app.spotifyPlaylists;
+			if (spotList.length > 0) {
+				var tmpplaylists = [];
+				var tmpplaylistsURI = [];
+				for (var i = 0; i < spotList.length; i++) {
+					tmpplaylists.push({"name": spotList[i]["name"]});
+					tmpplaylistsURI.push(spotList[i]["uri"]);
+					playlistScrollableSimpleList.addDevice(i);
+				}
+				app.playlists = tmpplaylists;
+				app.playlistsURI = tmpplaylistsURI;
+				playlistScrollableSimpleList.refreshView();
+				if (playlistScrollableSimpleList.currentPage == -1) {
+					playlistScrollableSimpleList.scrollToPage(0);
 				}
 			}
-			xmlhttpSpot.open("GET", "https://api.spotify.com/v1/users/" + app.spotifyUserIDs[app.selectedPlaylistUser - 1] + "/playlists");
-                	xmlhttpSpot.setRequestHeader("Authorization", 'Bearer ' + app.spotifyToken["access_token"]);
-			xmlhttpSpot.send();
-		
-		} else { 			//else show Sonos playlists
-
-		
+			pageThrobber.visible = false;
+			counterList = spotList.length;
+		} else {
+			// Show Sonos playlists
 			var xmlhttp = new XMLHttpRequest();
-			xmlhttp.onreadystatechange=function() {	
+			xmlhttp.onreadystatechange = function() {
 				if (xmlhttp.readyState == 4) {
 					if (xmlhttp.status == 200) {
 						var response = JSON.parse(xmlhttp.responseText);
-							playlistScrollableSimpleList.removeAll();
-							if (response.length > 0) {
-								var tmpplaylists = [];
-								for (var i = 0; i < response.length; i++) {
-									tmpplaylists.push({"name": response[i]}); 
-									playlistScrollableSimpleList.addDevice(i);
-								}
-								app.playlists = tmpplaylists;
-								playlistScrollableSimpleList.refreshView();
-								if (playlistScrollableSimpleList.currentPage == -1) {
-									playlistScrollableSimpleList.scrollToPage(0);
-								}
-							} 
-							pageThrobber.visible = false;
-							counterList = response.length;
+						playlistScrollableSimpleList.removeAll();
+						if (response.length > 0) {
+							var tmpplaylists = [];
+							for (var i = 0; i < response.length; i++) {
+								tmpplaylists.push({"name": response[i]});
+								playlistScrollableSimpleList.addDevice(i);
+							}
+							app.playlists = tmpplaylists;
+							playlistScrollableSimpleList.refreshView();
+							if (playlistScrollableSimpleList.currentPage == -1) {
+								playlistScrollableSimpleList.scrollToPage(0);
+							}
 						}
+						pageThrobber.visible = false;
+						counterList = response.length;
 					}
 				}
+			}
 			xmlhttp.open("GET", "http://"+app.connectionPath+"/playlists");
 			xmlhttp.send();
 		}
