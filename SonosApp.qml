@@ -94,7 +94,12 @@ App {
 	FileIO {
 		id: sonosSettingsFile
 		source: "file:///mnt/data/tsc/sonos.userSettings.json"
- 	}
+	}
+
+	FileIO {
+		id: sonosTokenFile
+		source: "file:///mnt/data/tsc/sonos.spotifyToken.json"
+	}
 
 	QtObject {
 		id: p
@@ -204,6 +209,26 @@ App {
 		saveFile.send(JSON.stringify(settings));
 	}
 
+	function saveTokenFile() {
+		var saveFile = new XMLHttpRequest();
+		saveFile.open("PUT", "file:///mnt/data/tsc/sonos.spotifyToken.json");
+		saveFile.send(JSON.stringify({
+			"refresh_token": spotifyRefreshToken,
+			"access_token": spotifyToken["access_token"]
+		}));
+	}
+
+	function readTokenFile() {
+		var tokenString = sonosTokenFile.read();
+		if (tokenString && tokenString.length > 2) {
+			try {
+				var tokenData = JSON.parse(tokenString);
+				if (tokenData["refresh_token"]) spotifyRefreshToken = tokenData["refresh_token"];
+				if (tokenData["access_token"]) spotifyToken["access_token"] = tokenData["access_token"];
+			} catch(e) {}
+		}
+	}
+
 	function readSettings() {
 		var settingsString = sonosSettingsFile.read();
 		settings = JSON.parse(settingsString);
@@ -230,6 +255,8 @@ App {
 			}
 			updateAvailableZones();
 		}
+
+		readTokenFile();   // token file overrides settings for refresh token
 
 		if (spotifyStatus == "configured" && spotifyRefreshToken.length > 0) {
 			startupTokenTimer.start();
@@ -258,6 +285,7 @@ App {
 					spotifyRefreshToken = response["refresh_token"];
 					spotifyStatus = "configured";
 					saveSettings();
+					saveTokenFile();
 					fetchSpotifyUserProfile();
 					fetchSpotifyPlaylists();
 					tokenRefreshTimer.stop();
@@ -287,8 +315,8 @@ App {
 					spotifyToken["access_token"] = response["access_token"];
 					if (response["refresh_token"]) {
 						spotifyRefreshToken = response["refresh_token"];
-						saveSettings();
 					}
+					saveTokenFile();
 					fetchSpotifyPlaylists();
 					tokenRefreshTimer.stop();
 					tokenRefreshTimer.interval = 3300000;
@@ -298,6 +326,7 @@ App {
 					spotifyStatus = "toBeConfigured";
 					spotifyRefreshToken = "";
 					saveSettings();
+					saveTokenFile();
 				}
 				// Any other status (network error, timeout) — keep token, retry next timer tick
 			}
