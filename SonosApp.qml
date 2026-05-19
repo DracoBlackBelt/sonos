@@ -232,7 +232,7 @@ App {
 		}
 
 		if (spotifyStatus == "configured" && spotifyRefreshToken.length > 0) {
-			refreshSpotifyAccessToken();
+			startupTokenTimer.start();
 		}
 	}
 
@@ -293,12 +293,13 @@ App {
 					tokenRefreshTimer.stop();
 					tokenRefreshTimer.interval = 3300000;
 					tokenRefreshTimer.start();
-				} else {
-					// Refresh token expired — require re-login
+				} else if (xmlhttp.status == 400 || xmlhttp.status == 401) {
+					// Definitively invalid token — require re-login
 					spotifyStatus = "toBeConfigured";
 					spotifyRefreshToken = "";
 					saveSettings();
 				}
+				// Any other status (network error, timeout) — keep token, retry next timer tick
 			}
 		}
 		var body = "grant_type=refresh_token&refresh_token=" + spotifyRefreshToken;
@@ -473,6 +474,15 @@ App {
 		trackElapsedTime = trackElapsedTime + 1;
 		if (trackElapsedTime > trackDuration) trackElapsedTime = trackDuration;
 		mediaScreen.positionIndicatorX = Math.floor((trackElapsedTime / trackDuration) * mediaScreen.positionIndicatorWidth);
+	}
+
+	Timer {
+		id: startupTokenTimer
+		interval: 15000       // wait 15 s for network to be ready after boot
+		triggeredOnStart: false
+		running: false
+		repeat: false
+		onTriggered: refreshSpotifyAccessToken()
 	}
 
 	Timer {
