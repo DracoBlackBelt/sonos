@@ -87,7 +87,7 @@ print('Settings updated.')
 \""
 
 echo "Restarting Toon app..."
-$TOON "killall qmlscene; sleep 2; systemctl start tsc" 2>/dev/null || true
+$TOON "reboot" 2>/dev/null || true
 
 echo ""
 echo "Done! Spotify should be connected within 15 seconds of the app restarting."
