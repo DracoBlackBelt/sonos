@@ -32,7 +32,7 @@ Screen {
 	
 	
 	//Required to use the Sonos HTTP API and to start every request in the functions.
-	function simpleSynchronous(request) {
+	function simpleSynchronous(request, callback, parameter) {
 		pageThrobber.visible = true;
 		var xmlhttp = new XMLHttpRequest();
 		xmlhttp.open("GET", request, true);
@@ -40,10 +40,10 @@ Screen {
 		xmlhttp.send();
 		xmlhttp.onreadystatechange=function() {
 			if (xmlhttp.readyState == 4) {
+				pageThrobber.visible = false;
 				if (xmlhttp.status == 200) {
-					pageThrobber.visible = false;
-					if (typeof(functie) !== 'undefined') {
-						functie(parameter);
+					if (typeof(callback) === 'function') {
+						callback(parameter);
 					}
 				}
 			}
@@ -285,12 +285,37 @@ Screen {
 
 
 		onClicked: {
-			simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/clearqueue");
-			for (var i = 0; i < trackCount ; i++) {
-				simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/spotify/queue/" + searchResults["tracks"]["items"][i]["uri"]);
+			var tracks = [];
+			for (var i = 0; i < trackCount; i++) {
+				tracks.push(searchResults["tracks"]["items"][i]["uri"]);
 			}
-			simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/play")
-			if (app.mediaScreen) app.mediaScreen.show();
+
+			function queueNextTrack(index) {
+				if (index >= tracks.length) {
+					simpleSynchronous("http://"+app.connectionPath+"/"+encodeURIComponent(app.sonosName)+"/play");
+					if (app.mediaScreen) app.mediaScreen.show();
+					return;
+				}
+				
+				var xmlhttp = new XMLHttpRequest();
+				xmlhttp.onreadystatechange = function() {
+					if (xmlhttp.readyState == 4) {
+						// Continue regardless of success/fail of individual track to not get stuck
+						queueNextTrack(index + 1);
+					}
+				}
+				xmlhttp.open("GET", "http://"+app.connectionPath+"/"+encodeURIComponent(app.sonosName)+"/spotify/queue/" + tracks[index], true);
+				xmlhttp.send();
+			}
+
+			var xmlhttpClear = new XMLHttpRequest();
+			xmlhttpClear.onreadystatechange = function() {
+				if (xmlhttpClear.readyState == 4) {
+					queueNextTrack(0);
+				}
+			}
+			xmlhttpClear.open("GET", "http://"+app.connectionPath+"/"+encodeURIComponent(app.sonosName)+"/clearqueue", true);
+			xmlhttpClear.send();
 		}
 	}
 		
@@ -350,60 +375,73 @@ Screen {
 
 		if (app.spotifyStatus == "configured") {
 			var xmlhttpSpot = new XMLHttpRequest();	
+			xmlhttpSpot.timeout = 5000;
+			xmlhttpSpot.ontimeout = function() {
+				pageThrobber.visible = false;
+				console.log("spotify: search request timed out");
+			}
+			xmlhttpSpot.onerror = function() {
+				pageThrobber.visible = false;
+				console.log("spotify: search request network error");
+			}
 			xmlhttpSpot.onreadystatechange=function() {
 				if (xmlhttpSpot.readyState == 4) {
 					if (xmlhttpSpot.status == 200) {
-
-						searchResults = JSON.parse(xmlhttpSpot.responseText);
-						searchResultsSimpleList.removeAll();
+						try {
+							searchResults = JSON.parse(xmlhttpSpot.responseText);
+							searchResultsSimpleList.removeAll();
 
 							// get search results counters for albums, tracks and playlists
 
-						trackCount = 0;
-						if (searchResults["tracks"]) {
-							if (searchResults["tracks"]["items"]) {
-								trackCount = searchResults["tracks"]["items"].length
+							trackCount = 0;
+							if (searchResults["tracks"]) {
+								if (searchResults["tracks"]["items"]) {
+									trackCount = searchResults["tracks"]["items"].length
+								}
 							}
-						}
 
-						albumCount = 0;
-						if (searchResults["albums"]) {
-							if (searchResults["albums"]["items"]) {
-								albumCount = searchResults["albums"]["items"].length
+							albumCount = 0;
+							if (searchResults["albums"]) {
+								if (searchResults["albums"]["items"]) {
+									albumCount = searchResults["albums"]["items"].length
+								}
 							}
-						}
 
-						playlistCount = 0;
-						if (searchResults["playlists"]) {
-							if (searchResults["playlists"]["items"]) {
-								playlistCount = searchResults["playlists"]["items"].length
+							playlistCount = 0;
+							if (searchResults["playlists"]) {
+								if (searchResults["playlists"]["items"]) {
+									playlistCount = searchResults["playlists"]["items"].length
+								}
 							}
-						}
 
 							// fill displayResults with tracks
 
-	
-						if (trackCount > 0) {
-							var tmpResults = [];
-							for (var i = 0; i < trackCount ; i++) {
-								tmpResults.push({"name": searchResults["tracks"]["items"][i]["name"] + " (" + searchResults["tracks"]["items"][i]["artists"][0]["name"] + ")" , "uri":searchResults["tracks"]["items"][i]["uri"]}); 
-								searchResultsSimpleList.addDevice(i);
+							if (trackCount > 0) {
+								var tmpResults = [];
+								for (var i = 0; i < trackCount ; i++) {
+									tmpResults.push({"name": searchResults["tracks"]["items"][i]["name"] + " (" + searchResults["tracks"]["items"][i]["artists"][0]["name"] + ")" , "uri":searchResults["tracks"]["items"][i]["uri"]}); 
+									searchResultsSimpleList.addDevice(i);
+								}
+								displayResults = tmpResults;
+								searchResultsSimpleList.refreshView();
+								if (searchResultsSimpleList.currentPage == -1) {
+									searchResultsSimpleList.scrollToPage(0);
+								}
+								trackSelected = true
+								albumSelected = false
+								playlistSelected = false
 							}
-							displayResults = tmpResults;
-							searchResultsSimpleList.refreshView();
-							if (searchResultsSimpleList.currentPage == -1) {
-								searchResultsSimpleList.scrollToPage(0);
-							}
-							trackSelected = true
-							albumSelected = false
-							playlistSelected = false
-						} 
+						} catch(e) {
+							console.log("spotify: error parsing search results: " + e);
+						}
+						pageThrobber.visible = false;
+					} else {
 						pageThrobber.visible = false;
 					}
 				}
 			}
 		}
-		xmlhttpSpot.open("GET", "https://api.spotify.com/v1/search?q=" + searchTextLabel.inputText + "&type=track,album,playlist,artist");
+		xmlhttpSpot.open("GET", "https://api.spotify.com/v1/search?q=" + encodeURIComponent(searchTextLabel.inputText) + "&type=track,album,playlist,artist");
                	xmlhttpSpot.setRequestHeader("Authorization", 'Bearer ' + app.spotifyToken["access_token"]);
 		xmlhttpSpot.send();
 	}

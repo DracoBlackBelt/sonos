@@ -73,13 +73,9 @@ Screen {
 
 		var queueItemArtist = " ";
 		var queueItemTitle = " ";
-		try {
-			if (app.queue[item]['artist']) queueItemArtist = app.queue[item]['artist']
-		} catch(e) {
-		}
-		try {
-			if (app.queue[item]['title']) queueItemTitle = app.queue[item]['title']
-		} catch(e) {
+		if (app.queue && app.queue[item]) {
+			if (app.queue[item]['artist']) queueItemArtist = app.queue[item]['artist'];
+			if (app.queue[item]['title']) queueItemTitle = app.queue[item]['title'];
 		}
 
 		return queueItemTitle + " - " + queueItemArtist
@@ -88,9 +84,8 @@ Screen {
 	function formatItemTitle(item) {
 
 		var queueItemTitle = " ";
-		try {
-			if (app.queue[item]['title']) queueItemTitle = app.queue[item]['title']
-		} catch(e) {
+		if (app.queue && app.queue[item]) {
+			if (app.queue[item]['title']) queueItemTitle = app.queue[item]['title'];
 		}
 		return queueItemTitle
 	}
@@ -492,31 +487,38 @@ Screen {
 	function updateQueue() {
 
 		var xmlhttp = new XMLHttpRequest();
+		xmlhttp.timeout = 3000;
+		xmlhttp.onerror = function() { console.log("sonos: updateQueue network error"); }
+		xmlhttp.ontimeout = function() { console.log("sonos: updateQueue timeout"); }
 		xmlhttp.onreadystatechange=function() {
 			if (xmlhttp.readyState == 4) {
 				if (xmlhttp.status == 200) {
-					var response = JSON.parse(xmlhttp.responseText);
-					if (itemType != "radio") {
-						boilerScrollableSimpleList.removeAll();
-						if (response.length > 0) {
-							var tmpqueue = [];
-							for (var i = 0; i < response.length; i++) {
-								tmpqueue.push({"name": response[i]['title'], "artist": response[i]['artist'], "thumb": app.sonosIP+":1400" + response[i]['albumArtUri'],"title": response[i]['title']});
-								boilerScrollableSimpleList.addDevice(i);
+					try {
+						var response = JSON.parse(xmlhttp.responseText);
+						if (itemType != "radio") {
+							boilerScrollableSimpleList.removeAll();
+							if (response.length > 0) {
+								var tmpqueue = [];
+								for (var i = 0; i < response.length; i++) {
+									tmpqueue.push({"name": response[i]['title'], "artist": response[i]['artist'], "thumb": app.sonosIP+":1400" + response[i]['albumArtUri'],"title": response[i]['title']});
+									boilerScrollableSimpleList.addDevice(i);
+								}
+								app.queue = tmpqueue;
+								boilerScrollableSimpleList.refreshView();
+								if (boilerScrollableSimpleList.currentPage == -1) {
+									boilerScrollableSimpleList.scrollToPage(0);
+								}
+							} else {
+								boilerScrollableSimpleList.addDevice(itemText.text);
 							}
-							app.queue = tmpqueue;
-							boilerScrollableSimpleList.refreshView();
-							if (boilerScrollableSimpleList.currentPage == -1) {
-								boilerScrollableSimpleList.scrollToPage(0);
-							}
-						} else {
-							boilerScrollableSimpleList.addDevice(itemText.text);
 						}
+					} catch(e) {
+						console.log("sonos: error parsing queue: " + e);
 					}
 				}
 			}
 		}
-		xmlhttp.open("GET", "http://"+app.connectionPath+"/"+app.sonosName+"/queue");
+		xmlhttp.open("GET", "http://"+app.connectionPath+"/"+encodeURIComponent(app.sonosName)+"/queue");
 		xmlhttp.send();
 	}
 	

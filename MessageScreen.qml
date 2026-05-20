@@ -19,7 +19,8 @@ Screen {
 
 		if ((appName == "sonos") && app.playFootballScores) {	
 			var xmlhttp = new XMLHttpRequest();
-			xmlhttp.open("GET", "http://"+app.connectionPath+"/"+app.sonosNameVoetbalApp+"/say/" + appArguments + "/nl-nl/" + app.messageVolume);
+			xmlhttp.timeout = 5000;
+			xmlhttp.open("GET", "http://"+app.connectionPath+"/"+encodeURIComponent(app.sonosNameVoetbalApp)+"/say/" + encodeURIComponent(appArguments) + "/nl-nl/" + app.messageVolume);
 			xmlhttp.send();
 		}
 	}
@@ -42,17 +43,24 @@ Screen {
 	function updateZones() {
 
 		var xmlhttp = new XMLHttpRequest();
+		xmlhttp.timeout = 5000;
+		xmlhttp.onerror = function() { console.log("sonos: MessageScreen updateZones network error"); }
+		xmlhttp.ontimeout = function() { console.log("sonos: MessageScreen updateZones timeout"); }
 		xmlhttp.onreadystatechange=function() {
 			if (xmlhttp.readyState == 4) {
 				if (xmlhttp.status == 200) {
-					var response = JSON.parse(xmlhttp.responseText);
-					if (response.length > 0) {
-						zoneNameModel.clear();
-						zoneNameModel.append({zoneName: "Alle"});
-						for (var i = 0; i < response.length; i++) {
-							zoneNameModel.append({zoneName: response[i]["coordinator"]["roomName"]});
+					try {
+						var response = JSON.parse(xmlhttp.responseText);
+						if (response.length > 0) {
+							zoneNameModel.clear();
+							zoneNameModel.append({zoneName: "Alle"});
+							for (var i = 0; i < response.length; i++) {
+								zoneNameModel.append({zoneName: response[i]["coordinator"]["roomName"]});
+							}
 						}
-					} 
+					} catch(e) {
+						console.log("sonos: error parsing zones in MessageScreen: " + e);
+					}
 				}
 			}
 		}
@@ -231,22 +239,38 @@ Screen {
 				onClicked: {
 					waitForMessageCompletion = true;
 					var xmlhttp = new XMLHttpRequest();
+					xmlhttp.timeout = 10000;
+					xmlhttp.onerror = function() {
+						waitForMessageCompletion = false;
+						qdialog.showDialog(qdialog.SizeSmall, "Sonos mededeling", "Netwerkfout bij versturen bericht", "Sluiten");
+					}
+					xmlhttp.ontimeout = function() {
+						waitForMessageCompletion = false;
+						qdialog.showDialog(qdialog.SizeSmall, "Sonos mededeling", "Time-out bij versturen bericht", "Sluiten");
+					}
 					if (app.messageSonosName == "Alle") {
-						xmlhttp.open("GET", "http://"+app.connectionPath+"/sayall/" + item + "/nl-nl/" + app.messageVolume);
+						xmlhttp.open("GET", "http://"+app.connectionPath+"/sayall/" + encodeURIComponent(item) + "/nl-nl/" + app.messageVolume);
 					} else {
-						xmlhttp.open("GET", "http://"+app.connectionPath+"/"+app.messageSonosName+"/say/" + item + "/nl-nl/" + app.messageVolume);
+						xmlhttp.open("GET", "http://"+app.connectionPath+"/"+encodeURIComponent(app.messageSonosName)+"/say/" + encodeURIComponent(item) + "/nl-nl/" + app.messageVolume);
 					}
 					xmlhttp.onreadystatechange=function() {
 						if (xmlhttp.readyState == 4) {
 							if (xmlhttp.status == 200) {
-								var messageResponse = "Fout in versturen bericht";
-								var response = JSON.parse(xmlhttp.responseText);
-								if (response['status']) {
-									if (response['status'] == "success") {
-										messageResponse = "Bericht succesvol afgespeeld";
+								try {
+									var messageResponse = "Fout in versturen bericht";
+									var response = JSON.parse(xmlhttp.responseText);
+									if (response['status']) {
+										if (response['status'] == "success") {
+											messageResponse = "Bericht succesvol afgespeeld";
+										}
 									}
+									qdialog.showDialog(qdialog.SizeSmall, "Sonos mededeling", messageResponse, "Sluiten");
+								} catch(e) {
+									console.log("sonos: error parsing message response: " + e);
+									qdialog.showDialog(qdialog.SizeSmall, "Sonos mededeling", "Ongeldig antwoord van server", "Sluiten");
 								}
-								qdialog.showDialog(qdialog.SizeSmall, "Sonos mededeling", messageResponse, "Sluiten");
+								waitForMessageCompletion = false;
+							} else {
 								waitForMessageCompletion = false;
 							}
 						}

@@ -23,17 +23,24 @@ Screen {
 
 	onCustomButtonClicked: {
 		var xmlhttp = new XMLHttpRequest();
+		xmlhttp.timeout = 5000;
+		xmlhttp.onerror = function() { console.log("sonos: MenuScreen check connection network error"); }
+		xmlhttp.ontimeout = function() { console.log("sonos: MenuScreen check connection timeout"); }
 		xmlhttp.onreadystatechange=function() {
 			if (xmlhttp.readyState == 4) {
 				if (xmlhttp.status == 200) {
-					var response = JSON.parse(xmlhttp.responseText);
-					if (response.length > 0) {
-						app.sonosName = response[0]["coordinator"]["roomName"];
-						hide();
-						if (response.length > 1) {
-							app.mediaSelectZone.show();
+					try {
+						var response = JSON.parse(xmlhttp.responseText);
+						if (response.length > 0) {
+							app.sonosName = response[0]["coordinator"]["roomName"];
+							hide();
+							if (response.length > 1) {
+								app.mediaSelectZone.show();
+							}
 						}
-					} 
+					} catch(e) {
+						console.log("sonos: error parsing zones in MenuScreen: " + e);
+					}
 				}
 			}
 		}

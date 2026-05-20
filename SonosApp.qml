@@ -148,22 +148,26 @@ App {
 		xmlhttp.onreadystatechange=function() {
 			if (xmlhttp.readyState == 4) {
 				if (xmlhttp.status == 200) {
-					var response = JSON.parse(xmlhttp.responseText);
-					sonosNameIsGroup = false;
-					if (response.length > 0) {
-						for (var i = 0; i < response.length; i++) {
-							var tmpGroupFlag = (response[i]["members"].length > 1);
-							if (tmpSonosName == response[i]["coordinator"]["roomName"]) {
-								sonosName = tmpSonosName;
-								sonosNameIsGroup = tmpGroupFlag;
+					try {
+						var response = JSON.parse(xmlhttp.responseText);
+						sonosNameIsGroup = false;
+						if (response.length > 0) {
+							for (var i = 0; i < response.length; i++) {
+								var tmpGroupFlag = (response[i]["members"].length > 1);
+								if (tmpSonosName == response[i]["coordinator"]["roomName"]) {
+									sonosName = tmpSonosName;
+									sonosNameIsGroup = tmpGroupFlag;
+								}
+								newArray.push({name: response[i]["coordinator"]["roomName"], isGroup: tmpGroupFlag});
 							}
-							newArray.push({name: response[i]["coordinator"]["roomName"], isGroup: tmpGroupFlag});
+							sonoslist = newArray;
 						}
-						sonoslist = newArray;
-					}
-					if (sonosName.length < 1) {
-						sonosName = newArray[0]['name'];
-						sonosNameIsGroup = newArray[0]['isGroup'];
+						if (sonosName.length < 1) {
+							sonosName = newArray[0]['name'];
+							sonosNameIsGroup = newArray[0]['isGroup'];
+						}
+					} catch(e) {
+						console.log("sonos: error parsing zones response: " + e);
 					}
 				}
 			}
@@ -233,30 +237,34 @@ App {
 
 	function readSettings() {
 		var settingsString = sonosSettingsFile.read();
-		settings = JSON.parse(settingsString);
-		if (settings['showSonosIcon']) showSonosIcon = (settings['showSonosIcon'] == "true");
-		if (settings['sonosName']) sonosName = (settings['sonosName']);
-		if (settings['sonosNameVoetbalApp']) sonosNameVoetbalApp = (settings['sonosNameVoetbalApp']);
-		if (settings['messageVolume']) messageVolume = (settings['messageVolume']);
-		if (settings['messageSonosName']) messageSonosName = (settings['messageSonosName']);
-		if (settings['messageText']) messageTextArray = (settings['messageText']);
-		if (settings['voetbalTussenstanden']) playFootballScores = (settings['voetbalTussenstanden'] == "true");
-		if (settings['spotifyStatus']) spotifyStatus = settings['spotifyStatus'];
-		if (settings['spotifyClientId']) spotifyToken["spotifyClientId"] = settings['spotifyClientId'];
-		if (settings['spotifyClientSecret']) spotifyToken["spotifyClientSecret"] = settings['spotifyClientSecret'];
-		if (settings['spotifyRefreshToken']) spotifyRefreshToken = settings['spotifyRefreshToken'];
-		if (settings['spotifyDisplayName']) spotifyDisplayName = settings['spotifyDisplayName'];
-		if (settings['recentlyPlayed']) recentlyPlayed = settings['recentlyPlayed'];
+		try {
+			settings = JSON.parse(settingsString);
+			if (settings['showSonosIcon']) showSonosIcon = (settings['showSonosIcon'] == "true");
+			if (settings['sonosName']) sonosName = (settings['sonosName']);
+			if (settings['sonosNameVoetbalApp']) sonosNameVoetbalApp = (settings['sonosNameVoetbalApp']);
+			if (settings['messageVolume']) messageVolume = (settings['messageVolume']);
+			if (settings['messageSonosName']) messageSonosName = (settings['messageSonosName']);
+			if (settings['messageText']) messageTextArray = (settings['messageText']);
+			if (settings['voetbalTussenstanden']) playFootballScores = (settings['voetbalTussenstanden'] == "true");
+			if (settings['spotifyStatus']) spotifyStatus = settings['spotifyStatus'];
+			if (settings['spotifyClientId']) spotifyToken["spotifyClientId"] = settings['spotifyClientId'];
+			if (settings['spotifyClientSecret']) spotifyToken["spotifyClientSecret"] = settings['spotifyClientSecret'];
+			if (settings['spotifyRefreshToken']) spotifyRefreshToken = settings['spotifyRefreshToken'];
+			if (settings['spotifyDisplayName']) spotifyDisplayName = settings['spotifyDisplayName'];
+			if (settings['recentlyPlayed']) recentlyPlayed = settings['recentlyPlayed'];
 
-		if (settings['path']) {
-			connectionPath = (settings['path']);
-			if (connectionPath.length > 0) {
-				var pathVar = connectionPath;
-				var splitVar = pathVar.split(":")
-				ipadresLabel = splitVar[0];
-				poortnummer = splitVar[1];
+			if (settings['path']) {
+				connectionPath = (settings['path']);
+				if (connectionPath.length > 0) {
+					var pathVar = connectionPath;
+					var splitVar = pathVar.split(":")
+					ipadresLabel = splitVar[0];
+					poortnummer = splitVar[1];
+				}
+				updateAvailableZones();
 			}
-			updateAvailableZones();
+		} catch(e) {
+			console.log("sonos: error parsing settings: " + e);
 		}
 
 		readTokenFile();   // token file overrides settings for refresh token
@@ -280,27 +288,41 @@ App {
 	// Exchange authorization code for access + refresh tokens
 	function exchangeCodeForToken(code) {
 		var xmlhttp = new XMLHttpRequest();
+		xmlhttp.timeout = 10000;
+		xmlhttp.onerror = function() { 
+			spotifyStatus = "error";
+			console.log("spotify: exchangeCodeForToken network error");
+		}
+		xmlhttp.ontimeout = function() {
+			spotifyStatus = "error";
+			console.log("spotify: exchangeCodeForToken timeout");
+		}
 		xmlhttp.onreadystatechange = function() {
 			if (xmlhttp.readyState == 4) {
 				if (xmlhttp.status == 200) {
-					var response = JSON.parse(xmlhttp.responseText);
-					spotifyToken["access_token"] = response["access_token"];
-					spotifyRefreshToken = response["refresh_token"];
-					spotifyStatus = "configured";
-					saveSettings();
-					saveTokenFile();
-					fetchSpotifyUserProfile();
-					fetchSpotifyPlaylists();
-					tokenRefreshTimer.stop();
-					tokenRefreshTimer.interval = 3300000;
-					tokenRefreshTimer.start();
+					try {
+						var response = JSON.parse(xmlhttp.responseText);
+						spotifyToken["access_token"] = response["access_token"];
+						spotifyRefreshToken = response["refresh_token"];
+						spotifyStatus = "configured";
+						saveSettings();
+						saveTokenFile();
+						fetchSpotifyUserProfile();
+						fetchSpotifyPlaylists();
+						tokenRefreshTimer.stop();
+						tokenRefreshTimer.interval = 3300000;
+						tokenRefreshTimer.start();
+					} catch(e) {
+						spotifyStatus = "error";
+						console.log("spotify: error parsing token response: " + e);
+					}
 				} else {
 					spotifyStatus = "error";
 				}
 			}
 		}
 		var body = "grant_type=authorization_code" +
-			"&code=" + code +
+			"&code=" + encodeURIComponent(code) +
 			"&redirect_uri=https%3A%2F%2Fexample.com";
 		xmlhttp.open("POST", "https://accounts.spotify.com/api/token");
 		xmlhttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
@@ -311,19 +333,26 @@ App {
 	// Refresh the access token using the stored refresh token
 	function refreshSpotifyAccessToken() {
 		var xmlhttp = new XMLHttpRequest();
+		xmlhttp.timeout = 10000;
+		xmlhttp.onerror = function() { console.log("spotify: refreshSpotifyAccessToken network error"); }
+		xmlhttp.ontimeout = function() { console.log("spotify: refreshSpotifyAccessToken timeout"); }
 		xmlhttp.onreadystatechange = function() {
 			if (xmlhttp.readyState == 4) {
 				if (xmlhttp.status == 200) {
-					var response = JSON.parse(xmlhttp.responseText);
-					spotifyToken["access_token"] = response["access_token"];
-					if (response["refresh_token"]) {
-						spotifyRefreshToken = response["refresh_token"];
+					try {
+						var response = JSON.parse(xmlhttp.responseText);
+						spotifyToken["access_token"] = response["access_token"];
+						if (response["refresh_token"]) {
+							spotifyRefreshToken = response["refresh_token"];
+						}
+						saveTokenFile();
+						fetchSpotifyPlaylists();
+						tokenRefreshTimer.stop();
+						tokenRefreshTimer.interval = 3300000;
+						tokenRefreshTimer.start();
+					} catch(e) {
+						console.log("spotify: error parsing refresh token response: " + e);
 					}
-					saveTokenFile();
-					fetchSpotifyPlaylists();
-					tokenRefreshTimer.stop();
-					tokenRefreshTimer.interval = 3300000;
-					tokenRefreshTimer.start();
 				} else if (xmlhttp.status == 400 || xmlhttp.status == 401) {
 					// Definitively invalid token — require re-login
 					spotifyStatus = "toBeConfigured";
@@ -334,7 +363,7 @@ App {
 				// Any other status (network error, timeout) — keep token, retry next timer tick
 			}
 		}
-		var body = "grant_type=refresh_token&refresh_token=" + spotifyRefreshToken;
+		var body = "grant_type=refresh_token&refresh_token=" + encodeURIComponent(spotifyRefreshToken);
 		xmlhttp.open("POST", "https://accounts.spotify.com/api/token");
 		xmlhttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
 		xmlhttp.setRequestHeader("Authorization", "Basic " + customBtoa(spotifyToken["spotifyClientId"] + ":" + spotifyToken["spotifyClientSecret"]));
@@ -344,12 +373,19 @@ App {
 	// Fetch user's display name from Spotify profile
 	function fetchSpotifyUserProfile() {
 		var xmlhttp = new XMLHttpRequest();
+		xmlhttp.timeout = 10000;
+		xmlhttp.onerror = function() { console.log("spotify: fetchSpotifyUserProfile network error"); }
+		xmlhttp.ontimeout = function() { console.log("spotify: fetchSpotifyUserProfile timeout"); }
 		xmlhttp.onreadystatechange = function() {
 			if (xmlhttp.readyState == 4) {
 				if (xmlhttp.status == 200) {
-					var response = JSON.parse(xmlhttp.responseText);
-					spotifyDisplayName = response["display_name"] || response["id"] || "";
-					saveSettings();
+					try {
+						var response = JSON.parse(xmlhttp.responseText);
+						spotifyDisplayName = response["display_name"] || response["id"] || "";
+						saveSettings();
+					} catch(e) {
+						console.log("spotify: error parsing profile: " + e);
+					}
 				}
 			}
 		}
@@ -361,18 +397,27 @@ App {
 	// Fetch the user's Spotify playlists and store as [{name, uri}]
 	function fetchSpotifyPlaylists() {
 		var xmlhttp = new XMLHttpRequest();
+		xmlhttp.timeout = 15000;
+		xmlhttp.onerror = function() { console.log("spotify: fetchSpotifyPlaylists network error"); }
+		xmlhttp.ontimeout = function() { console.log("spotify: fetchSpotifyPlaylists timeout"); }
 		xmlhttp.onreadystatechange = function() {
 			if (xmlhttp.readyState == 4) {
 				if (xmlhttp.status == 200) {
-					var response = JSON.parse(xmlhttp.responseText);
-					var result = [];
-					var items = response["items"];
-					for (var i = 0; i < items.length; i++) {
-						if (items[i] && items[i]["name"] && items[i]["uri"]) {
-							result.push({name: items[i]["name"], uri: items[i]["uri"]});
+					try {
+						var response = JSON.parse(xmlhttp.responseText);
+						var result = [];
+						var items = response["items"];
+						if (items) {
+							for (var i = 0; i < items.length; i++) {
+								if (items[i] && items[i]["name"] && items[i]["uri"]) {
+									result.push({name: items[i]["name"], uri: items[i]["uri"]});
+								}
+							}
 						}
+						spotifyPlaylists = result;
+					} catch(e) {
+						console.log("spotify: error parsing playlists: " + e);
 					}
-					spotifyPlaylists = result;
 				}
 			}
 		}
@@ -411,17 +456,19 @@ App {
 
   		while (i < str.length) {
   			const c1 = str.charCodeAt(i++);
-    			const c2 = str.charCodeAt(i++);
-    			const c3 = str.charCodeAt(i++);
+			const hasC2 = i < str.length;
+    			const c2 = hasC2 ? str.charCodeAt(i++) : NaN;
+			const hasC3 = i < str.length;
+    			const c3 = hasC3 ? str.charCodeAt(i++) : NaN;
 
     			const e1 = c1 >> 2;
     			const e2 = ((c1 & 3) << 4) | (c2 >> 4);
     			const e3 = ((c2 & 15) << 2) | (c3 >> 6);
     			const e4 = c3 & 63;
 
-    			if (isNaN(c2)) {
+    			if (!hasC2) {
       				encoded += chars.charAt(e1) + chars.charAt(e2) + '==';
-    			} else if (isNaN(c3)) {
+    			} else if (!hasC3) {
       				encoded += chars.charAt(e1) + chars.charAt(e2) + chars.charAt(e3) + '=';
     			} else {
       				encoded += chars.charAt(e1) + chars.charAt(e2) + chars.charAt(e3) + chars.charAt(e4);
@@ -433,72 +480,79 @@ App {
 
 	function readSonosState() {
 		var xmlhttp = new XMLHttpRequest();
+		xmlhttp.timeout = 4000;
+		xmlhttp.onerror = function() { console.log("sonos: readSonosState network error"); }
+		xmlhttp.ontimeout = function() { console.log("sonos: readSonosState timeout"); }
 		xmlhttp.onreadystatechange=function() {
 			if (xmlhttp.readyState == 4) {
 				if (xmlhttp.status == 200) {
-					var response = JSON.parse(xmlhttp.responseText);
-					if (response['currentTrack']['type'] == "track"){
-						showSlider = true;
-						showSliderTime = true;
-						actualArtist = "";
-						actualTitle = "";
-						if (response['currentTrack']['title']) actualTitle = response['currentTrack']['title'];
-						if (response['currentTrack']['artist']) actualArtist = response['currentTrack']['artist'];
-						if (response['currentTrack']['duration']) trackDuration = response['currentTrack']['duration'];
-						if (response['elapsedTime']) {
-							if (!mediaScreen.positionIndicatorDragActive) {
-								trackElapsedTime = response['elapsedTime'];
-								mediaScreen.positionIndicatorX = Math.floor((trackElapsedTime / trackDuration) * mediaScreen.positionIndicatorWidth);
+					try {
+						var response = JSON.parse(xmlhttp.responseText);
+						if (response['currentTrack']['type'] == "track"){
+							showSlider = true;
+							showSliderTime = true;
+							actualArtist = "";
+							actualTitle = "";
+							if (response['currentTrack']['title']) actualTitle = response['currentTrack']['title'];
+							if (response['currentTrack']['artist']) actualArtist = response['currentTrack']['artist'];
+							if (response['currentTrack']['duration']) trackDuration = response['currentTrack']['duration'];
+							if (response['elapsedTime']) {
+								if (!mediaScreen.positionIndicatorDragActive) {
+									trackElapsedTime = response['elapsedTime'];
+									mediaScreen.positionIndicatorX = Math.floor((trackElapsedTime / trackDuration) * mediaScreen.positionIndicatorWidth);
+								}
+							}
+							if ('absoluteAlbumArtUri' in response['currentTrack']) {
+								var tmpNowPlayingImage = response['currentTrack']['absoluteAlbumArtUri'].replace("https://", "http://");
+							} else {
+								var tmpNowPlayingImage = "";
+							}
+							if (tmpNowPlayingImage !== nowPlayingImage) {
+								nowPlayingImage = tmpNowPlayingImage;
 							}
 						}
-						if ('absoluteAlbumArtUri' in response['currentTrack']) {
-							var tmpNowPlayingImage = response['currentTrack']['absoluteAlbumArtUri'].replace("https://", "http://");
-						} else {
-							var tmpNowPlayingImage = "";
+						if (response['currentTrack']['type'] == "radio"){
+							showSlider = false;
+							showSliderTime = false;
+							actualArtist = response['currentTrack']['stationName'];
+							actualTitle = "";
+							if (response['playbackState'] == "PLAYING") {
+								actualTitle = response['currentTrack']['title'];
+							}
+							if ('absoluteAlbumArtUri' in response['currentTrack']) {
+								var tmpNowPlayingImage = response['currentTrack']['absoluteAlbumArtUri'].replace("https://", "http://");
+							} else {
+								var tmpNowPlayingImage = "";
+							}
+							if (tmpNowPlayingImage !== nowPlayingImage) {
+								nowPlayingImage = tmpNowPlayingImage;
+							}
 						}
-						if (tmpNowPlayingImage !== nowPlayingImage) {
-							nowPlayingImage = tmpNowPlayingImage;
+						if (actualTitle.substring(0,10) == "x-sonosapi") {
+							actualTitle = "";
 						}
-					}
-					if (response['currentTrack']['type'] == "radio"){
-						showSlider = false;
-						showSliderTime = false;
-						actualArtist = response['currentTrack']['stationName'];
-						actualTitle = "";
-						if (response['playbackState'] == "PLAYING") {
-							actualTitle = response['currentTrack']['title'];
-						}
-						if ('absoluteAlbumArtUri' in response['currentTrack']) {
-							var tmpNowPlayingImage = response['currentTrack']['absoluteAlbumArtUri'].replace("https://", "http://");
-						} else {
-							var tmpNowPlayingImage = "";
-						}
-						if (tmpNowPlayingImage !== nowPlayingImage) {
-							nowPlayingImage = tmpNowPlayingImage;
-						}
-					}
-					if (actualTitle.substring(0,10) == "x-sonosapi") {
-						actualTitle = "";
-					}
 
-					playbackState = response['playbackState'];
-					shuffleButtonVisible = response['playMode']['shuffle'];
-					shuffleOnButtonVisible = !shuffleButtonVisible;
-					pauseButtonVisible = (playbackState == "PLAYING");
-					playButtonVisible = !pauseButtonVisible;
-					if (pauseButtonVisible) {
-						sonosTrackTimer.start()
-					} else {
-						sonosTrackTimer.stop()
+						playbackState = response['playbackState'];
+						shuffleButtonVisible = response['playMode']['shuffle'];
+						shuffleOnButtonVisible = !shuffleButtonVisible;
+						pauseButtonVisible = (playbackState == "PLAYING");
+						playButtonVisible = !pauseButtonVisible;
+						if (pauseButtonVisible) {
+							sonosTrackTimer.start()
+						} else {
+							sonosTrackTimer.stop()
+						}
+					} catch(e) {
+						console.log("sonos: error parsing state: " + e);
 					}
 				}
 			}
 		}
-		xmlhttp.open("GET", "http://"+connectionPath+"/"+sonosName+"/state");
+		xmlhttp.open("GET", "http://"+connectionPath+"/"+encodeURIComponent(sonosName)+"/state");
 		xmlhttp.send();
 	}
 
-	function simpleSynchronous(request) {
+	function simpleSynchronous(request, callback, parameter) {
 		var xmlhttp = new XMLHttpRequest();
 		xmlhttp.open("GET", request, true);
 		xmlhttp.timeout = 1500;
@@ -506,8 +560,8 @@ App {
 		xmlhttp.onreadystatechange=function() {
 			if (xmlhttp.readyState == 4) {
 				if (xmlhttp.status == 200) {
-					if (typeof(functie) !== 'undefined') {
-						functie(parameter);
+					if (typeof(callback) === 'function') {
+						callback(parameter);
 					}
 				}
 			}
