@@ -304,6 +304,10 @@ App {
 				if (xmlhttp.status == 200) {
 					try {
 						var response = JSON.parse(xmlhttp.responseText);
+						if (!response["access_token"] || !response["refresh_token"]) {
+							spotifyStatus = "error";
+							return;
+						}
 						spotifyToken["access_token"] = response["access_token"];
 						spotifyRefreshToken = response["refresh_token"];
 						spotifyStatus = "configured";
@@ -343,6 +347,7 @@ App {
 				if (xmlhttp.status == 200) {
 					try {
 						var response = JSON.parse(xmlhttp.responseText);
+						if (!response["access_token"]) return;
 						spotifyToken["access_token"] = response["access_token"];
 						if (response["refresh_token"]) {
 							spotifyRefreshToken = response["refresh_token"];
