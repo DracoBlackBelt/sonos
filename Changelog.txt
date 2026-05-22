@@ -1,3 +1,8 @@
+1.4.1
+- Security: Spotify client secret no longer stored in general settings file, moved to token file
+- Security: Client secret field no longer pre-populated in plaintext on the login screen
+- Fixed: malformed Spotify token responses no longer silently corrupt stored tokens
+
 1.4.0
 - Spotify login via OAuth Authorization Code flow (replaces client credentials)
 - Spotify playlists now loaded directly from your own account after login
