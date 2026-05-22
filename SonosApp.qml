@@ -204,8 +204,6 @@ App {
 		settings["messageVolume"] = messageVolume;
 		settings["voetbalTussenstanden"] = tmpVoetbal;
 		settings["spotifyStatus"] = spotifyStatus;
-		settings["spotifyClientId"] = spotifyToken["spotifyClientId"];
-		settings["spotifyClientSecret"] = spotifyToken["spotifyClientSecret"];
 		settings["spotifyRefreshToken"] = spotifyRefreshToken;
 		settings["spotifyDisplayName"] = spotifyDisplayName;
 		settings["recentlyPlayed"] = recentlyPlayed;
@@ -219,6 +217,8 @@ App {
 		var saveFile = new XMLHttpRequest();
 		saveFile.open("PUT", "file:///mnt/data/tsc/sonos.spotifyToken.json");
 		saveFile.send(JSON.stringify({
+			"spotifyClientId": spotifyToken["spotifyClientId"],
+			"spotifyClientSecret": spotifyToken["spotifyClientSecret"],
 			"refresh_token": spotifyRefreshToken,
 			"access_token": spotifyToken["access_token"]
 		}));
@@ -229,6 +229,8 @@ App {
 		if (tokenString && tokenString.length > 2) {
 			try {
 				var tokenData = JSON.parse(tokenString);
+				if (tokenData["spotifyClientId"]) spotifyToken["spotifyClientId"] = tokenData["spotifyClientId"];
+				if (tokenData["spotifyClientSecret"]) spotifyToken["spotifyClientSecret"] = tokenData["spotifyClientSecret"];
 				if (tokenData["refresh_token"]) spotifyRefreshToken = tokenData["refresh_token"];
 				if (tokenData["access_token"]) spotifyToken["access_token"] = tokenData["access_token"];
 			} catch(e) {}

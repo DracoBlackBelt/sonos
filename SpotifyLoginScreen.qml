@@ -20,7 +20,7 @@ Screen {
 			step = 3;
 		} else if (app.spotifyToken["spotifyClientId"].length > 0) {
 			clientIdLabel.inputText = app.spotifyToken["spotifyClientId"];
-			clientSecretLabel.inputText = app.spotifyToken["spotifyClientSecret"];
+			clientSecretLabel.inputText = "";
 			step = 0;
 		} else {
 			step = 0;
@@ -107,7 +107,8 @@ Screen {
 			fontPixelSize: isNxt ? 25 : 20
 			onClicked: {
 				app.spotifyToken["spotifyClientId"] = clientIdLabel.inputText;
-				app.spotifyToken["spotifyClientSecret"] = clientSecretLabel.inputText;
+				if (clientSecretLabel.inputText.length > 0)
+					app.spotifyToken["spotifyClientSecret"] = clientSecretLabel.inputText;
 				app.saveSettings();
 				authUrl = app.buildSpotifyAuthUrl();
 				step = 1;
@@ -333,7 +334,7 @@ Screen {
 	}
 
 	function openClientSecretKeyboard() {
-		qkeyboard.open(qsTr("Voer Client Secret in"), clientSecretLabel.inputText, function(text) {
+		qkeyboard.open(qsTr("Voer Client Secret in"), "", function(text) {
 			if (text) clientSecretLabel.inputText = text;
 		});
 	}
