@@ -278,7 +278,9 @@ Screen {
 				anchors.top: parent.top
 				onClicked: {
 					favGet(app.sonosUrl("clearqueue"));
-					favGet(app.sonosUrl("spotify/now/" + encodeURIComponent(rightPanelItems[item]['uri'])));
+					// the Spotify URI must go into the path RAW: the http-api matches /spotify/now/... 
+					// against the un-decoded path, so %3A-encoded colons break playback
+					favGet(app.sonosUrl("spotify/now/" + rightPanelItems[item]['uri']));
 					app.addToRecentlyPlayed(rightPanelItems[item]['name'], rightPanelItems[item]['uri']);
 					hide();
 				}

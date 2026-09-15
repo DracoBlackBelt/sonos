@@ -1,3 +1,7 @@
+1.4.3
+- Fixed: playing a Spotify recent or search result did nothing (1.4.2 regression: the Spotify URI
+  was percent-encoded into the command path; the http-api only matches raw 'spotify:...' URIs)
+
 1.4.2
 - Fixed: 'previous' button on the tile did nothing (URL was missing the zone)
 - Fixed: volume buttons on the zone overview changed the selected zone instead of the shown zone

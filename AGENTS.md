@@ -18,7 +18,7 @@ ssh -oHostKeyAlgorithms=+ssh-rsa root@<toon-ip> killall qt-gui
 ## Architecture
 
 - `SonosApp.qml` — central `App`: all state, timers, API functions, settings I/O, widget registration (in `function init()`, NOT `Component.onCompleted`). Screens read state through `app`.
-- Sonos commands: `http://<connectionPath>/<zone>/<command>` with `connectionPath` = `<ip>:<port>`; ALWAYS build these via the `sonosUrl(cmd)` / `zoneUrl(zone, cmd)` helpers on `app` (they `encodeURIComponent` the zone name; never hand-concatenate `sonosName` into a URL). State polled by `sonosPlayInfoTimer` (5000 ms active / 20000 ms dimmed) with an in-flight flag + `stateWatchdog` Timer (15 s) — device `xhr.timeout` is unreliable, the watchdog is the real bound; `sonosTrackTimer` ticks elapsed time every 1000 ms, `startupTokenTimer` waits 15 s after boot before the first token refresh, `tokenRefreshTimer` re-fires every **55 min** and is (re)started after *every* refresh attempt — including failed ones — so Spotify recovers without a reboot.
+- Sonos commands: `http://<connectionPath>/<zone>/<command>` with `connectionPath` = `<ip>:<port>`; ALWAYS build these via the `sonosUrl(cmd)` / `zoneUrl(zone, cmd)` helpers on `app` (they `encodeURIComponent` the zone name; never hand-concatenate `sonosName` into a URL). EXCEPTION: Spotify URIs passed to `/<zone>/spotify/{now,next,queue}/<uri>` must stay RAW (`spotify:track:...`) — the http-api regex-matches the un-decoded path and chokes on `%3A`; colons are legal in a path segment. Name parameters (playlist/favorite/say) ARE encoded; those handlers decode. State polled by `sonosPlayInfoTimer` (5000 ms active / 20000 ms dimmed) with an in-flight flag + `stateWatchdog` Timer (15 s) — device `xhr.timeout` is unreliable, the watchdog is the real bound; `sonosTrackTimer` ticks elapsed time every 1000 ms, `startupTokenTimer` waits 15 s after boot before the first token refresh, `tokenRefreshTimer` re-fires every **55 min** and is (re)started after *every* refresh attempt — including failed ones — so Spotify recovers without a reboot.
 - `apiGet(request, callback, parameter, done)` is the XHR helper: `callback(parameter)` on HTTP 200, `done()` always at completion (used by `FavoritesScreen.favGet` for throbber handling). MediaScreen also guards `updateQueue` with its own `queueInFlight` flag + `queueWatchdog`.
 
 | File | Role |
@@ -52,4 +52,4 @@ ssh -oHostKeyAlgorithms=+ssh-rsa root@<toon-ip> killall qt-gui
 
 ## Releases
 
-Bump `version.txt` (currently `1.4.2`) and prepend a brief block to `Changelog.txt` together when changing behavior. Spotify/auth/HTTP-layer changes go through the security checklist in `.claude/agents/spotify-security-reviewer.md` before release.
+Bump `version.txt` (currently `1.4.3`) and prepend a brief block to `Changelog.txt` together when changing behavior. Spotify/auth/HTTP-layer changes go through the security checklist in `.claude/agents/spotify-security-reviewer.md` before release.
