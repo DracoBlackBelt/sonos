@@ -149,9 +149,9 @@ Tile {
 		iconSource: "qrc:/tsc/volume_down_small.png"
 		onClicked: {
 			if (app.sonosNameIsGroup) {
-				app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/groupVolume/-2");
+				app.apiGet(app.sonosUrl("groupVolume/-2"));
 			} else {
-				app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/volume/-2");
+				app.apiGet(app.sonosUrl("volume/-2"));
 			}
 		}
 		visible: !dimState
@@ -166,7 +166,7 @@ Tile {
 
 		iconSource: "qrc:/tsc/left.png"
 		onClicked: {
-			app.simpleSynchronous("http://"+app.connectionPath+"/previous");
+			app.apiGet(app.sonosUrl("previous"));
 		}
 		visible: !dimState
 	}
@@ -183,7 +183,7 @@ Tile {
 		onClicked: {
 			app.playButtonVisible = false;
 			app.pauseButtonVisible = false;
-			app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/pause");
+			app.apiGet(app.sonosUrl("pause"));
 		}
 		visible: !dimState && app.pauseButtonVisible
 	}
@@ -200,7 +200,7 @@ Tile {
 		onClicked: {
 			app.playButtonVisible = false;
 			app.pauseButtonVisible = false;
-			app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/play");
+			app.apiGet(app.sonosUrl("play"));
 			}
 		visible: !dimState && app.playButtonVisible
 	}
@@ -215,8 +215,7 @@ Tile {
 
 		iconSource: "qrc:/tsc/right.png"
 		onClicked: {
-			console.log("next");
-			app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/next");
+			app.apiGet(app.sonosUrl("next"));
 		}
 		visible: !dimState
 	}	
@@ -233,9 +232,9 @@ Tile {
 		iconSource: "qrc:/tsc/volume_up_small.png"
 		onClicked: {
 			if (app.sonosNameIsGroup) {
-				app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/groupVolume/+2");
+				app.apiGet(app.sonosUrl("groupVolume/+2"));
 			} else {
-				app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/volume/+2");
+				app.apiGet(app.sonosUrl("volume/+2"));
 			}
 		}
 		visible: !dimState

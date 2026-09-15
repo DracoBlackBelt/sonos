@@ -82,12 +82,10 @@ Rectangle
 		iconSource: "qrc:/tsc/volume_down_small.png"
 		onClicked: {
 			if (isGroup == "yes") {
-				app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/groupVolume/-2");
+				app.apiGet(app.zoneUrl(zoneName, "groupVolume/-2"));
 			} else {
-				app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/volume/-2");
+				app.apiGet(app.zoneUrl(zoneName, "volume/-2"));
 			}
-			volume = volume - 2;
-			if (volume < 0 ) volume = 0;
 		}
 		visible: volume > 0
 	}
@@ -101,7 +99,7 @@ Rectangle
 
 		iconSource: "qrc:/tsc/left.png"
 		onClicked: {
-			app.simpleSynchronous("http://"+app.connectionPath+"/"+zoneName + "/previous");
+			app.apiGet(app.zoneUrl(zoneName, "previous"));
 		}
 	}
 
@@ -115,7 +113,7 @@ Rectangle
 
 		iconSource: "qrc:/tsc/pause.png"
 		onClicked: {
-			app.simpleSynchronous("http://"+app.connectionPath+"/"+zoneName+"/pause");
+			app.apiGet(app.zoneUrl(zoneName, "pause"));
 		}
 		visible: playbackState == "PLAYING"
 	}
@@ -130,7 +128,7 @@ Rectangle
 
 		iconSource: "qrc:/tsc/play.png"
 		onClicked: {
-			app.simpleSynchronous("http://"+app.connectionPath+"/"+zoneName+"/play");
+			app.apiGet(app.zoneUrl(zoneName, "play"));
 			}
 		visible: playbackState !== "PLAYING"
 	}
@@ -145,8 +143,7 @@ Rectangle
 
 		iconSource: "qrc:/tsc/right.png"
 		onClicked: {
-			console.log("next");
-			app.simpleSynchronous("http://"+app.connectionPath+"/"+zoneName+"/next");
+			app.apiGet(app.zoneUrl(zoneName, "next"));
 		}
 	}	
 	
@@ -162,12 +159,10 @@ Rectangle
 		iconSource: "qrc:/tsc/volume_up_small.png"
 		onClicked: {
 			if (isGroup == "yes") {
-				app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/groupVolume/+2");
+				app.apiGet(app.zoneUrl(zoneName, "groupVolume/+2"));
 			} else {
-				app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/volume/+2");
+				app.apiGet(app.zoneUrl(zoneName, "volume/+2"));
 			}
-			volume = volume + 2;
-			if (volume > 100) volume = 100;
 		}
 		visible: volume < 100
 	}

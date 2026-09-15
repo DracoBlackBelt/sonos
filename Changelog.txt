@@ -1,3 +1,24 @@
+1.4.2
+- Fixed: 'previous' button on the tile did nothing (URL was missing the zone)
+- Fixed: volume buttons on the zone overview changed the selected zone instead of the shown zone
+- Fixed: Spotify token refresh failure at boot (e.g. network not up yet) no longer requires a reboot to recover
+- Fixed: 'Verbreek verbinding' now actually removes the stored Spotify tokens (they survived a restart)
+- Security: the Spotify client secret and refresh token are migrated out of the general settings file
+  on first boot; they now live only in sonos.spotifyToken.json together with the client id
+  and access token (spotify-login.sh updated to match)
+- Fixed: line-in button used an invalid API url; now uses the documented /linein command
+- Fixed: zone names in API commands are now always URL-encoded, so rooms with spaces or
+  special characters work on all buttons (media screen, tile, zone overview, favourites)
+- Fixed: a failed Sonos API poll could wipe the selected zone until the next successful one
+- Fixed: tile/media screen could keep showing the previous track when playing line-in or an empty queue
+- Fixed: several errors in the state poller and position slider when the media screen was never opened
+  or when track duration was not (yet) known (NaN slider position, 1-per-second error log spam)
+- Changed: the voetbal-speaker button no longer stores its 'click to select' text as a zone name;
+  scores are only announced when a real zone is configured
+- Changed: 'Check Connection' now shows a dialog on failure instead of silently doing nothing
+- Added: poller watchdogs so one hung request cannot block state/queue updates indefinitely
+- Removed: unused SpotifyMusicSearchScreen and Spotify playlist fetch; various dead code and properties
+
 1.4.1
 - Security: Spotify client secret no longer stored in general settings file, moved to token file
 - Security: Client secret field no longer pre-populated in plaintext on the login screen

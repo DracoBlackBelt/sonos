@@ -16,10 +16,24 @@ if ! command -v sshpass &>/dev/null; then
 fi
 
 # Read existing credentials from Toon if available
+# (client secret lives in the token file since 1.4.1; pre-1.4.1 devices may still have it in settings)
 echo "Reading settings from Toon..."
 SETTINGS_JSON=$($TOON "cat $SETTINGS 2>/dev/null")
-CLIENT_ID=$(echo "$SETTINGS_JSON" | python3 -c "import json,sys; s=json.load(sys.stdin); print(s.get('spotifyClientId',''))" 2>/dev/null)
-CLIENT_SECRET=$(echo "$SETTINGS_JSON" | python3 -c "import json,sys; s=json.load(sys.stdin); print(s.get('spotifyClientSecret',''))" 2>/dev/null)
+TOKENS_JSON=$($TOON "cat $TOKEN_FILE 2>/dev/null")
+CLIENT_ID=$( (echo "$TOKENS_JSON"; echo "$SETTINGS_JSON") | python3 -c "
+import json,sys
+raw=[l for l in sys.stdin if l.strip()]
+for s in raw:
+    try:
+        d=json.loads(s)
+        v=d.get('spotifyClientId','')
+        if v: print(v); break
+    except Exception: pass
+" 2>/dev/null)
+CLIENT_SECRET=$(echo "$TOKENS_JSON" | python3 -c "import json,sys; s=json.load(sys.stdin); print(s.get('spotifyClientSecret',''))" 2>/dev/null)
+if [ -z "$CLIENT_SECRET" ]; then
+    CLIENT_SECRET=$(echo "$SETTINGS_JSON" | python3 -c "import json,sys; s=json.load(sys.stdin); print(s.get('spotifyClientSecret',''))" 2>/dev/null)
+fi
 
 if [ -z "$CLIENT_ID" ]; then
     read -p "Spotify Client ID: " CLIENT_ID
@@ -66,10 +80,21 @@ fi
 
 echo "Got tokens. Writing to Toon..."
 
-# Write tokens to dedicated token file (survives settings resets)
-$TOON "echo '{\"refresh_token\":\"'\"$REFRESH_TOKEN\"'\",\"access_token\":\"'\"$ACCESS_TOKEN\"'\"}' > $TOKEN_FILE"
+# Write client credentials + tokens to the dedicated token file (the ONLY place secrets/tokens are stored)
+TOKENS_OUT=$(python3 -c "
+import json, sys
+print(json.dumps({
+    'spotifyClientId': sys.argv[1],
+    'spotifyClientSecret': sys.argv[2],
+    'refresh_token': sys.argv[3],
+    'access_token': sys.argv[4],
+}))
+" "$CLIENT_ID" "$CLIENT_SECRET" "$REFRESH_TOKEN" "$ACCESS_TOKEN")
+printf '%s' "$TOKENS_OUT" | $TOON "cat > $TOKEN_FILE"
+$TOON "chmod 600 $TOKEN_FILE" 2>/dev/null || true
 
 # Update main settings file locally (Toon may not have python3) and push to Toon
+# NOTE: never put spotifyClientSecret or tokens in the settings file (removed there in 1.4.1)
 UPDATED_SETTINGS=$(echo "$SETTINGS_JSON" | python3 -c "
 import json, sys
 try:
@@ -78,10 +103,10 @@ except Exception:
     s = {}
 s['spotifyStatus'] = 'configured'
 s['spotifyClientId'] = sys.argv[1]
-s['spotifyClientSecret'] = sys.argv[2]
-s['spotifyRefreshToken'] = sys.argv[3]
+s.pop('spotifyClientSecret', None)
+s.pop('spotifyRefreshToken', None)
 print(json.dumps(s))
-" "$CLIENT_ID" "$CLIENT_SECRET" "$REFRESH_TOKEN")
+" "$CLIENT_ID")
 printf '%s' "$UPDATED_SETTINGS" | $TOON "cat > $SETTINGS"
 echo "Settings updated."
 

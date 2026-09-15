@@ -7,12 +7,8 @@ Screen {
 	screenTitleIconUrl: "qrc:/tsc/Sonos_Favorites.png";
 	hasHomeButton: false
 
-	property int counterFav
 	property string tempId
-	property string lineinUrl
-	property string stationName
 	property variant rightPanelItems : []
-	property bool searchActive : false
 
 	onHidden: {
 		screenStateController.screenColorDimmedIsReachable = true;
@@ -27,8 +23,6 @@ Screen {
 		screenStateController.screenColorDimmedIsReachable = false;
 		pageThrobber.visible = true;
 		updateFavoriteslist();
-		updateLinein();
-		stationNameCheck();
 		if (app.spotifyStatus == "configured") {
 			loadRecents();
 		} else {
@@ -36,23 +30,14 @@ Screen {
 		}
 	}
 
-	//Required to use the Sonos HTTP API and to start every request in the functions.
-	function simpleSynchronous(request, callback, parameter) {
+	// Sonos command helper; keeps the throbber visible until the request finishes.
+	// (device timeout support is unreliable, the throbber may linger until the
+	// next update overwrites it — apiGet itself has a short client-side timeout)
+	function favGet(request, callback) {
 		pageThrobber.visible = true;
-		var xmlhttp = new XMLHttpRequest();
-		xmlhttp.open("GET", request, true);
-		xmlhttp.timeout = 1500;
-		xmlhttp.send();
-		xmlhttp.onreadystatechange=function() {
-			if (xmlhttp.readyState == 4) {
-				pageThrobber.visible = false;
-				if (xmlhttp.status == 200) {
-					if (typeof(callback) === 'function') {
-						callback(parameter);
-					}
-				}
-			}
-		}
+		app.apiGet(request, callback, null, function() {
+			pageThrobber.visible = false;
+		});
 	}
 
 	//if the connection is not available or is still loading a page throbber will be visible in the scrollable list.
@@ -123,7 +108,9 @@ Screen {
 		anchors.topMargin: isNxt ? 20 : 16
 		iconSource: "qrc:/tsc/input.png"
 		onClicked: {
-			simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/setavtransporturi/x-sonos-htastream:"+lineinUrl+":spdif")
+			// API endpoint /{zone}/linein switches the zone to its own analog line-in
+			favGet(app.sonosUrl("linein"));
+			hide();
 		}
 	}
 
@@ -185,8 +172,8 @@ Screen {
 
 				onClicked: {
 					tempId = app.favourites[item]["name"];
-					simpleSynchronous("http://"+app.connectionPath+"/"+encodeURIComponent(app.sonosName)+"/clearqueue");
-					simpleSynchronous("http://"+app.connectionPath+"/"+encodeURIComponent(app.sonosName)+"/favorite/"+encodeURIComponent(tempId));
+					favGet(app.sonosUrl("clearqueue"));
+					favGet(app.sonosUrl("favorite/" + encodeURIComponent(tempId)));
 					hide();
 				}
 			}
@@ -231,7 +218,7 @@ Screen {
 					top: parent.top
 				}
 				onClicked: {
-					simpleSynchronous("http://"+app.connectionPath+"/"+encodeURIComponent(app.sonosName)+"/playlist/"+encodeURIComponent(app.playlists[item]['name']));
+					favGet(app.sonosUrl("playlist/" + encodeURIComponent(app.playlists[item]['name'])));
 				}
 			}
 		}
@@ -290,28 +277,13 @@ Screen {
 				width: isNxt ? 350 : 280
 				anchors.top: parent.top
 				onClicked: {
-					simpleSynchronous("http://"+app.connectionPath+"/"+encodeURIComponent(app.sonosName)+"/clearqueue");
-					simpleSynchronous("http://"+app.connectionPath+"/"+encodeURIComponent(app.sonosName)+"/spotify/now/" + rightPanelItems[item]['uri']);
+					favGet(app.sonosUrl("clearqueue"));
+					favGet(app.sonosUrl("spotify/now/" + encodeURIComponent(rightPanelItems[item]['uri'])));
 					app.addToRecentlyPlayed(rightPanelItems[item]['name'], rightPanelItems[item]['uri']);
 					hide();
 				}
 			}
 		}
-	}
-
-	function pad(n, width) {
-		n = n + '';
-		return n.length >= width ? n : new Array(width - n.length + 1).join('0') + n;
-	}
-
-	function objToString (obj) {
-		var str = '';
-		for (var p in obj) {
-			if (obj.hasOwnProperty(p)) {
-				str += p + '::' + obj[p] + '\n';
-			}
-		}
-		return str;
 	}
 
 	function updateFavoriteslist() {
@@ -325,7 +297,6 @@ Screen {
 					try {
 						var response = JSON.parse(xmlhttp.responseText);
 						favouritesScrollableSimpleList.removeAll();
-						stationNameCheck();
 						if (response.length > 0) {
 							var tmpfavourites = [];
 							for (var i = 0; i < response.length; i++) {
@@ -338,7 +309,6 @@ Screen {
 								favouritesScrollableSimpleList.scrollToPage(0);
 							}
 						}
-						counterFav = response.length;
 					} catch(e) {
 						console.log("sonos: error parsing favorites: " + e);
 					}
@@ -392,7 +362,6 @@ Screen {
 	}
 
 	function loadRecents() {
-		searchActive = false;
 		spotifySearchInput.inputText = "";
 		populateRightPanelList(app.recentlyPlayed);
 		pageThrobber.visible = false;
@@ -420,7 +389,6 @@ Screen {
 	}
 
 	function searchSpotify(query) {
-		searchActive = true;
 		pageThrobber.visible = true;
 		var xmlhttp = new XMLHttpRequest();
 		xmlhttp.timeout = 6000;
@@ -442,8 +410,10 @@ Screen {
 						if (results["tracks"] && results["tracks"]["items"]) {
 							var tracks = results["tracks"]["items"];
 							for (var i = 0; i < tracks.length; i++) {
+								if (!tracks[i] || !tracks[i]["name"] || !tracks[i]["uri"]) continue;
+								var trackArtist = (tracks[i]["artists"] && tracks[i]["artists"][0]) ? tracks[i]["artists"][0]["name"] : "";
 								tmpItems.push({
-									name: tracks[i]["name"] + " - " + tracks[i]["artists"][0]["name"],
+									name: trackArtist.length > 0 ? tracks[i]["name"] + " - " + trackArtist : tracks[i]["name"],
 									uri: tracks[i]["uri"]
 								});
 							}
@@ -451,8 +421,10 @@ Screen {
 						if (results["albums"] && results["albums"]["items"]) {
 							var albums = results["albums"]["items"];
 							for (var j = 0; j < albums.length; j++) {
+								if (!albums[j] || !albums[j]["name"] || !albums[j]["uri"]) continue;
+								var albumArtist = (albums[j]["artists"] && albums[j]["artists"][0]) ? albums[j]["artists"][0]["name"] : "";
 								tmpItems.push({
-									name: "[Album] " + albums[j]["name"] + " - " + albums[j]["artists"][0]["name"],
+									name: "[Album] " + albums[j]["name"] + (albumArtist.length > 0 ? " - " + albumArtist : ""),
 									uri: albums[j]["uri"]
 								});
 							}
@@ -461,53 +433,13 @@ Screen {
 					} catch(e) {
 						console.log("spotify: error parsing search results: " + e);
 					}
+				} else if (xmlhttp.status == 401) {
+					qdialog.showDialog(qdialog.SizeSmall, "Spotify", "De Spotify-login is verlopen; verbind opnieuw via het Sonos-menu.", "Sluiten");
 				}
 			}
 		}
-		xmlhttp.open("GET", "https://api.spotify.com/v1/search?q=" + encodeURIComponent(query) + "&type=track,album&limit=10");
-		xmlhttp.setRequestHeader("Authorization", "Bearer " + app.spotifyToken["access_token"]);
-		xmlhttp.send();
-	}
-
-	function stationNameCheck() {
-		var xmlhttp = new XMLHttpRequest();
-		xmlhttp.timeout = 4000;
-		xmlhttp.onreadystatechange=function() {
-			if (xmlhttp.readyState == 4) {
-				if (xmlhttp.status == 200) {
-					try {
-						var response = JSON.parse(xmlhttp.responseText);
-						stationName = response['currentTrack']['stationName'];
-					} catch(e) {
-						console.log("sonos: error parsing station state: " + e);
-					}
-				}
-			}
-		}
-		xmlhttp.open("GET", "http://"+app.connectionPath+"/"+encodeURIComponent(app.sonosName)+"/state");
-		xmlhttp.send();
-	}
-
-	function updateLinein() {
-		var xmlhttp = new XMLHttpRequest();
-		xmlhttp.timeout = 5000;
-		xmlhttp.onreadystatechange=function() {
-			if (xmlhttp.readyState == 4) {
-				if (xmlhttp.status == 200) {
-					try {
-						var response = JSON.parse(xmlhttp.responseText);
-						for (var i = 0; i < response.length; i++) {
-							if (response[i]['coordinator']['roomName'] == app.sonosName) {
-								lineinUrl = response[i]['coordinator']['coordinator'];
-							}
-						}
-					} catch(e) {
-						console.log("sonos: error parsing zones for linein: " + e);
-					}
-				}
-			}
-		}
-		xmlhttp.open("GET", "http://"+app.connectionPath+"/zones");
+		xmlhttp.open("GET", "https://api.spotify.com/v1/search?q=" + encodeURIComponent(query) + "&type=track,album&limit=10", true);
+		xmlhttp.setRequestHeader("Authorization", "Bearer " + app.spotifyAccessToken);
 		xmlhttp.send();
 	}
 }

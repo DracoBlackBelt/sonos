@@ -31,20 +31,27 @@ Screen {
 						if (response.length > 0) {
 							zoneNameModel.clear();
 							for (var i = 0; i < response.length; i++) {
+								var coord = response[i]["coordinator"] || {};
+								var roomName = coord["roomName"] || "";
+								if (roomName.length < 1) continue;
+								var state = coord["state"] || {};
+								var currentTrack = state["currentTrack"] || {};
 								actualArtist = "?";
-								if (response[i]["coordinator"]["state"]['currentTrack']['type'] == "track"){
-									if (response[i]["coordinator"]["state"]['currentTrack']['artist']) actualArtist = response[i]["coordinator"]["state"]['currentTrack']['artist'];
+								if (currentTrack["type"] == "track"){
+									if (currentTrack["artist"]) actualArtist = currentTrack["artist"];
 								}
-								if (response[i]["coordinator"]["state"]['currentTrack']['type'] == "radio"){
-									if (response[i]["coordinator"]["state"]['currentTrack']['stationName']) actualArtist = response[i]["coordinator"]["state"]['currentTrack']['stationName'];
+								if (currentTrack["type"] == "radio"){
+									if (currentTrack["stationName"]) actualArtist = currentTrack["stationName"];
 								}
-								if (response[i]["members"].length > 1) {
+								var members = response[i]["members"];
+								if (members && members.length > 1) {
 									tmpIsGroup = "yes"
 								} else {
 									tmpIsGroup = "no"
 								}
-								console.log("SelectZone:" + i + "-" + "zoneName:" + response[i]["coordinator"]["roomName"] + ",playbackState:" + response[i]["coordinator"]["state"]["playbackState"] + ", volume:" + response[i]["coordinator"]["groupState"]["volume"] + ", artist:" + actualArtist + ", isGroup:" + tmpIsGroup);
-								zoneNameModel.append({zoneName: response[i]["coordinator"]["roomName"], playbackState: response[i]["coordinator"]["state"]["playbackState"], volume: response[i]["coordinator"]["groupState"]["volume"], artist: actualArtist, isGroup: tmpIsGroup});
+								var groupState = coord["groupState"] || {};
+								var zoneVolume = (typeof groupState["volume"] == 'number') ? groupState["volume"] : 0;
+								zoneNameModel.append({zoneName: roomName, playbackState: state["playbackState"] || "", volume: zoneVolume, artist: actualArtist, isGroup: tmpIsGroup});
 							}
 						}
 					} catch(e) {
@@ -107,9 +114,10 @@ Screen {
 		cellHeight: isNxt ? 50 : 40
 
 		anchors {
-			fill: parent
 			top: txtBox.bottom
 			left: txtBox.left
+			right: parent.right
+			bottom: parent.bottom
 			topMargin: isNxt ? 50 : 40
 		}
 	}

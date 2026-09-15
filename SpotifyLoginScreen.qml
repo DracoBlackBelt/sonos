@@ -16,10 +16,11 @@ Screen {
 
 	onShown: {
 		screenStateController.screenColorDimmedIsReachable = false;
+		app.spotifyStatus = (app.spotifyStatus == "error") ? "" : app.spotifyStatus;  // clear stale error on entry
 		if (app.spotifyStatus == "configured") {
 			step = 3;
-		} else if (app.spotifyToken["spotifyClientId"].length > 0) {
-			clientIdLabel.inputText = app.spotifyToken["spotifyClientId"];
+		} else if (app.spotifyClientId.length > 0) {
+			clientIdLabel.inputText = app.spotifyClientId;
 			clientSecretLabel.inputText = "";
 			step = 0;
 		} else {
@@ -106,10 +107,11 @@ Screen {
 			text: qsTr("Haal login URL op")
 			fontPixelSize: isNxt ? 25 : 20
 			onClicked: {
-				app.spotifyToken["spotifyClientId"] = clientIdLabel.inputText;
+				app.spotifyClientId = clientIdLabel.inputText;
 				if (clientSecretLabel.inputText.length > 0)
-					app.spotifyToken["spotifyClientSecret"] = clientSecretLabel.inputText;
+					app.spotifyClientSecret = clientSecretLabel.inputText;
 				app.saveSettings();
+				app.saveTokenFile();   // persist immediately: survives abandoning the flow midway
 				authUrl = app.buildSpotifyAuthUrl();
 				step = 1;
 			}

@@ -6,20 +6,14 @@ Screen {
 	id: mediaScreen
 	screenTitle: "Actuele playlist"
 	
-	//Property's are required to manage the correct Sonos Device
+	//Properties required by the central app (state poller writes positionIndicatorX,
+	//reads positionIndicatorDragActive, scales by positionIndicatorWidth)
 
-	property string export_ip
-	
 	property int tempId
-	property string playState
-	property string shuffleMode
-	property string itemType
-	property int volumeState
-	property alias queueTimerControl : queueTimer
 	property alias positionIndicatorWidth : volumeBar.width
-	property alias positionIndicatorLeft : volumeBar.left
 	property bool positionIndicatorDragActive : false
 	property int positionIndicatorX
+	property bool queueInFlight : false
 	
 	onCustomButtonClicked: {
 		if (app.favoritesScreen) {
@@ -29,36 +23,25 @@ Screen {
 	
 	onHidden: {
 		queueTimer.stop();
+		queueWatchdog.stop();
 	}
 
 	onShown: {
 		addCustomTopRightButton("Favorieten");
-		if (app.sonosName.length > 0) updateQueue();		
 		//in the menuscreen you'll need to fill in your hostname and portnumber, if there is no device found you will have an popup that you have to correct your configuration
 		if (app.sonosName.length < 1) {
-			if (app.menuScreen)	
+			if (app.menuScreen) {
 				app.menuScreen.show();
+				showPopup();
+			}
 		}
 		queueTimer.start();
-		checkSpotifyConfiguration();
 	}
 	
 	//this popup is giving you the message that you have to correct your configuration in the menu screen.
 	function showPopup() {
 		qdialog.showDialog(qdialog.SizeLarge, qsTr("Informatie"), qsTr("U bent nu doorgestuurd naar het menuscherm omdat er of nog geen hostname en of poortnummer is ingevuld, of de Sonos HTTP Api werkt niet. <br><br> Check deze gegevens op het menuscherm waar u nu op terecht bent gekomen. ") , qsTr("Sluiten"));
 	}
-
-	function checkSpotifyConfiguration() {
-		
-		if (app.showSpotifyConfigMessage) {	
-			if (app.spotifyStatus == "toBeConfigured") {
-				qdialog.showDialog(qdialog.SizeLarge, "Spotify configuratie", "Deze versie van de app ondersteund integratie met Spotify.\nWilt U Spotify playlists en muziek afspelen in deze app?\nAls U met 'Ja' antwoord zal U worden doorgeleid naar het configuratiescherm.\nAls U 'Nee' antwoord zal dit scherm niet meer worden getoond.\n U kunt op een later tijdstip deze keuze wijzigen via het Sonos menu item",
-						qsTr("Nee, Spotify niet gebruiken"), function(){ app.spotifyStatus = "rejected"; app.saveSettings() },
-						qsTr("Ja, Spotify configureren"), function(){if (app.spotifyCredentialsScreen) app.spotifyCredentialsScreen.show()});
-				app.showSpotifyConfigMessage = false;
-			} 
-		}	
-	}	
 
 	function getZoneTitle() {
 		
@@ -168,7 +151,7 @@ Screen {
 
 		iconSource: "qrc:/tsc/left.png"
 		onClicked: {
-			app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/previous");
+			app.apiGet(app.sonosUrl("previous"));
 		}
 	}
 
@@ -185,7 +168,7 @@ Screen {
 		onClicked: {
 			app.playButtonVisible = false;
 			app.pauseButtonVisible = false;
-			app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/pause");
+			app.apiGet(app.sonosUrl("pause"));
 		}
 		visible :  app.pauseButtonVisible
 	}
@@ -203,7 +186,7 @@ Screen {
 		onClicked: {
 			app.playButtonVisible = false;
 			app.pauseButtonVisible = false;
-			app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/play");
+			app.apiGet(app.sonosUrl("play"));
 		}
 		visible :  app.playButtonVisible
 	}
@@ -220,7 +203,7 @@ Screen {
 		onClicked: {
 			app.shuffleButtonVisible = false;
 			app.shuffleOnButtonVisible = false;
-			app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/shuffle/off");
+			app.apiGet(app.sonosUrl("shuffle/off"));
 		}
 		visible :  app.shuffleButtonVisible
 
@@ -237,7 +220,7 @@ Screen {
 		onClicked: {
 			app.shuffleButtonVisible = false;
 			app.shuffleOnButtonVisible = false;
-			app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/shuffle/on");
+			app.apiGet(app.sonosUrl("shuffle/on"));
 		}
 		visible :  app.shuffleOnButtonVisible
 	}
@@ -252,7 +235,7 @@ Screen {
 
 		iconSource: "qrc:/tsc/right.png"
 		onClicked: {
-			app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/next");
+			app.apiGet(app.sonosUrl("next"));
 		}
 	}
 	
@@ -273,7 +256,7 @@ Screen {
 					app.actualTitle = app.queue[item]['name'];
 					app.nowPlayingImage = "";
 					tempId = item + 1;
-					app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/trackseek/"+tempId);
+					app.apiGet(app.sonosUrl("trackseek/" + tempId));
 				}
 			}
 			
@@ -311,30 +294,6 @@ Screen {
 		anchors.right: parent.right
 		anchors.rightMargin: isNxt ? 75 : 60
 		anchors.topMargin: 10
-
-		Throbber {
-			id: throbber
-			visible: false
-			anchors {
-				horizontalCenter: parent.horizontalCenter
-				horizontalCenterOffset: -26
-				verticalCenter: parent.verticalCenter
-			}
-		}
-
-		Text {
-			id: noConnectionText
-			visible: false
-			anchors {
-				horizontalCenter: parent.horizontalCenter
-				horizontalCenterOffset: -26
-				verticalCenter: parent.verticalCenter
-			}
-//			color: colors.taNoInternet
-			font.family: qfont.italic.name
-			font.pixelSize: isNxt ? 20 : 16
-			text: qsTr("no-connection")
-		}
 	}
 	
 	
@@ -350,9 +309,9 @@ Screen {
 		iconSource: "qrc:/tsc/volume_up.png"
 		onClicked: {
 			if (app.sonosNameIsGroup) {
-				app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/groupVolume/+2");
+				app.apiGet(app.sonosUrl("groupVolume/+2"));
 			} else {
-				app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/volume/+2");
+				app.apiGet(app.sonosUrl("volume/+2"));
 			}
 		}
 	}
@@ -370,9 +329,9 @@ Screen {
 		iconSource: "qrc:/tsc/volume_down.png"
 		onClicked: {
 			if (app.sonosNameIsGroup) {
-				app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/groupVolume/-2");
+				app.apiGet(app.sonosUrl("groupVolume/-2"));
 			} else {
-				app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/volume/-2");
+				app.apiGet(app.sonosUrl("volume/-2"));
 			}
 		}
 	}
@@ -388,9 +347,10 @@ Screen {
 			right: volumeUp.right
 		}
 		onClicked: {
-			if (app.mediaSelectZone)
-				app.zoneToSelect = "sonosName";	
+			if (app.mediaSelectZone) {
+				app.zoneToSelect = "sonosName";
 				app.mediaSelectZone.show();
+			}
 		}
 	}
 	
@@ -430,9 +390,13 @@ Screen {
        			onDragActiveChanged: {
         			if (!drag.active) {
 					positionIndicatorDragActive = false;
-					var xPos = positionIndicator.x;
-					if (xPos < 0) xPos = 0;
-					app.simpleSynchronous("http://"+app.connectionPath+"/"+app.sonosName+"/timeseek/" + Math.floor(xPos * app.trackDuration / volumeBar.width)); 
+					if (app.trackDuration > 0) {
+						var xPos = positionIndicator.x;
+						if (xPos < 0) xPos = 0;
+						var seekSeconds = Math.floor(xPos * app.trackDuration / volumeBar.width);
+						app.apiGet(app.sonosUrl("timeseek/" + seekSeconds));
+						app.trackElapsedTime = seekSeconds;
+					}
 					app.showSlider = false;
 				} else {
 					positionIndicatorDragActive = true;
@@ -440,7 +404,7 @@ Screen {
 			}
 		}
 		onXChanged: {
-			if (mouseArea.drag.active) {
+			if (mouseArea.drag.active && app.trackDuration > 0) {
 				app.trackElapsedTime = Math.floor(x * app.trackDuration / volumeBar.width); 
 			}
 		}
@@ -483,33 +447,36 @@ Screen {
 	}
 
 		
-	//This function is to setup the playlist, export the information to: PlaylistItemsJS and configure the scrollable list (refresh and everything).
+	//This function is to setup the playlist, and also manage the scrollable list (refresh and everything).
 	function updateQueue() {
+		// queue only makes sense while playing tracks; don't pile up requests when the API is unreachable
+		if (!app.showSlider) { return; }
+		if (queueInFlight) { return; }
+		queueInFlight = true;
+		queueWatchdog.restart();
 
 		var xmlhttp = new XMLHttpRequest();
 		xmlhttp.timeout = 3000;
-		xmlhttp.onerror = function() { console.log("sonos: updateQueue network error"); }
-		xmlhttp.ontimeout = function() { console.log("sonos: updateQueue timeout"); }
+		xmlhttp.onerror = function() { queueInFlight = false; queueWatchdog.stop(); console.log("sonos: updateQueue network error"); }
+		xmlhttp.ontimeout = function() { queueInFlight = false; queueWatchdog.stop(); console.log("sonos: updateQueue timeout"); }
 		xmlhttp.onreadystatechange=function() {
 			if (xmlhttp.readyState == 4) {
+				queueInFlight = false;
+				queueWatchdog.stop();
 				if (xmlhttp.status == 200) {
 					try {
 						var response = JSON.parse(xmlhttp.responseText);
-						if (itemType != "radio") {
-							boilerScrollableSimpleList.removeAll();
-							if (response.length > 0) {
-								var tmpqueue = [];
-								for (var i = 0; i < response.length; i++) {
-									tmpqueue.push({"name": response[i]['title'], "artist": response[i]['artist'], "thumb": app.sonosIP+":1400" + response[i]['albumArtUri'],"title": response[i]['title']});
-									boilerScrollableSimpleList.addDevice(i);
-								}
-								app.queue = tmpqueue;
-								boilerScrollableSimpleList.refreshView();
-								if (boilerScrollableSimpleList.currentPage == -1) {
-									boilerScrollableSimpleList.scrollToPage(0);
-								}
-							} else {
-								boilerScrollableSimpleList.addDevice(itemText.text);
+						boilerScrollableSimpleList.removeAll();
+						if (response.length > 0) {
+							var tmpqueue = [];
+							for (var i = 0; i < response.length; i++) {
+								tmpqueue.push({"name": response[i]['title'], "artist": response[i]['artist'], "title": response[i]['title']});
+								boilerScrollableSimpleList.addDevice(i);
+							}
+							app.queue = tmpqueue;
+							boilerScrollableSimpleList.refreshView();
+							if (boilerScrollableSimpleList.currentPage == -1) {
+								boilerScrollableSimpleList.scrollToPage(0);
 							}
 						}
 					} catch(e) {
@@ -518,7 +485,7 @@ Screen {
 				}
 			}
 		}
-		xmlhttp.open("GET", "http://"+app.connectionPath+"/"+encodeURIComponent(app.sonosName)+"/queue");
+		xmlhttp.open("GET", app.sonosUrl("queue"), true);
 		xmlhttp.send();
 	}
 	
@@ -529,6 +496,18 @@ Screen {
 		running: false
 		repeat: true
 		onTriggered: updateQueue()
+	}
+
+	// safety net in case the XHR neither completes nor times out (unreliable on old Qt5)
+	Timer {
+		id: queueWatchdog
+		interval: 15000
+		repeat: false
+		running: false
+		onTriggered: {
+			queueInFlight = false;
+			console.log("sonos: queue poll watchdog reset");
+		}
 	}
 	
 }

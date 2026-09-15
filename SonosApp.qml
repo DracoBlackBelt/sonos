@@ -1,6 +1,6 @@
 //
-// Sonos v3.2 by Harmen Bartelink
-// Further enhanced by Toonz after Harmen stopped developing
+// Sonos app by Harmen Bartelink
+// Further enhanced by Toonz
 //
 
 import QtQuick 2.1
@@ -16,12 +16,9 @@ App {
 	property url messageScreenUrl : "MessageScreen.qml"
 	property url mediaSelectZoneUrl : "MediaSelectZone.qml"
 	property url spotifyLoginScreenUrl : "SpotifyLoginScreen.qml"
-	property url spotifyMusicSearchScreenUrl : "SpotifyMusicSearchScreen.qml"
 	property url tileUrl : "SonosTile.qml"
-	property url tileUrlControl : "SonosMiniControlTile.qml"
 	property url thumbnailIcon: "qrc:/tsc/SonosThumb.png"
 	property SpotifyLoginScreen spotifyLoginScreen
-	property SpotifyMusicSearchScreen spotifyMusicSearchScreen
 	property MenuScreen menuScreen
 	property MediaScreen mediaScreen
 	property MessageScreen messageScreen
@@ -32,18 +29,17 @@ App {
 	property bool showSonosIcon : true
 	property bool playFootballScores : true
 	property string playbackState
-	property string timeStr
-	property string dateStr
 	property variant playlists : []
-	property variant playlistsURI : []
 	property variant favourites : []
 	property variant queue : []
 	property variant sonoslist : []
 
 	property string spotifyStatus : "toBeConfigured"
+	property string spotifyClientId : ""
+	property string spotifyClientSecret : ""
+	property string spotifyAccessToken : ""
 	property string spotifyRefreshToken : ""
 	property string spotifyDisplayName : ""
-	property variant spotifyPlaylists : []      // [{name, uri}]
 	property variant recentlyPlayed : []        // [{name, uri}], last 10 played via Spotify search
 
 	property string sonosName
@@ -70,25 +66,15 @@ App {
 			"voetbalTussenstanden" : "",
 			"spotifyStatus" : "",
 			"spotifyClientId" : "",
-			"spotifyClientSecret" : "",
-			"spotifyRefreshToken" : "",
 			"spotifyDisplayName" : ""
-		}
-
-	property variant spotifyToken : {
-			"spotifyClientId" : "",
-			"spotifyClientSecret" : "",
-			"access_token" : ""
 		}
 
 	property variant messageTextArray : ["Hallo","Hallo daar, het eten staat klaar"]
 	property string messageSonosName : "Alle"
 	property int messageVolume : 20
-	property string messageText
 	property int trackDuration
 	property int trackElapsedTime
 	property bool showSlider : false
-	property bool showSliderTime : false
 
 	property string connectionPath
 
@@ -106,6 +92,7 @@ App {
 		id: p
 		property url favoritesScreenUrl : "FavoritesScreen.qml"
 		property url mediaScreenUrl : "MediaScreen.qml"
+		property bool stateInFlight : false
 	}
 
 	function init() {
@@ -116,7 +103,6 @@ App {
 		registry.registerWidget("screen", messageScreenUrl, this, "messageScreen");
 		registry.registerWidget("screen", mediaSelectZoneUrl, this, "mediaSelectZone");
 		registry.registerWidget("screen", spotifyLoginScreenUrl, this, "spotifyLoginScreen");
-		registry.registerWidget("screen", spotifyMusicSearchScreenUrl, this, "spotifyMusicSearchScreen");
 		registry.registerWidget("menuItem", null, this, null, {objectName: "sonosMenuItem", label: qsTr("Sonos"), image: thumbnailIcon, screenUrl: menuScreenUrl, weight: 120});
 		registry.registerWidget("tile", tileUrl, this, null, {thumbLabel: qsTr("Sonos"), thumbIcon: thumbnailIcon, thumbCategory: "general", thumbWeight: 30, baseTileWeight: 10, thumbIconVAlignment: "center"});
 	}
@@ -141,31 +127,47 @@ App {
 	}
 
 	function updateAvailableZones() {
-		var newArray = [];
-		var xmlhttp = new XMLHttpRequest();
 		var tmpSonosName = sonosName;
-		sonosName = "";
-		xmlhttp.onreadystatechange=function() {
+		var xmlhttp = new XMLHttpRequest();
+		xmlhttp.onerror = function() { console.log("sonos: updateAvailableZones network error"); }
+		xmlhttp.onreadystatechange = function() {
 			if (xmlhttp.readyState == 4) {
 				if (xmlhttp.status == 200) {
 					try {
 						var response = JSON.parse(xmlhttp.responseText);
-						sonosNameIsGroup = false;
-						if (response.length > 0) {
+						var newArray = [];
+						var newName = tmpSonosName;
+						var newIsGroup = false;
+						if (response && response.length > 0) {
 							for (var i = 0; i < response.length; i++) {
-								var tmpGroupFlag = (response[i]["members"].length > 1);
-								if (tmpSonosName == response[i]["coordinator"]["roomName"]) {
-									sonosName = tmpSonosName;
-									sonosNameIsGroup = tmpGroupFlag;
+								var roomName = "";
+								if (response[i]["coordinator"] && response[i]["coordinator"]["roomName"]) {
+									roomName = response[i]["coordinator"]["roomName"];
 								}
-								newArray.push({name: response[i]["coordinator"]["roomName"], isGroup: tmpGroupFlag});
+								if (roomName.length < 1) continue;
+								var members = response[i]["members"];
+								var tmpGroupFlag = (members && members.length > 1);
+								if (newName == roomName) {
+									newIsGroup = tmpGroupFlag;
+								}
+								newArray.push({name: roomName, isGroup: tmpGroupFlag});
 							}
 							sonoslist = newArray;
+							// fall back to first zone if the stored name no longer exists
+							if (newArray.length > 0 && newName.length > 0) {
+								var found = false;
+								for (var j = 0; j < newArray.length; j++) {
+									if (newArray[j]["name"] == newName) { found = true; break; }
+								}
+								if (!found) {
+									newName = newArray[0]["name"];
+									newIsGroup = newArray[0]["isGroup"];
+								}
+							}
 						}
-						if (sonosName.length < 1) {
-							sonosName = newArray[0]['name'];
-							sonosNameIsGroup = newArray[0]['isGroup'];
-						}
+						// only assign on success so a failed poll keeps the old zone
+						sonosName = newName;
+						sonosNameIsGroup = newIsGroup;
 					} catch(e) {
 						console.log("sonos: error parsing zones response: " + e);
 					}
@@ -179,10 +181,12 @@ App {
 	function saveshowSonosIcon(text) {
 		showSonosIcon = (text == "Yes");
    		saveSettings();
-		if (showSonosIcon) {
-			mediaTray.show();
-		} else {
-			mediaTray.hide();
+		if (mediaTray) {
+			if (showSonosIcon) {
+				mediaTray.show();
+			} else {
+				mediaTray.hide();
+			}
 		}
 	}
 
@@ -195,18 +199,22 @@ App {
 		var tmpTrayIcon = showSonosIcon ? "true" : "false";
 		var tmpVoetbal = playFootballScores ? "true" : "false";
 
-		settings["showSonosIcon"] = tmpTrayIcon;
-		settings["sonosName"] = sonosName;
-		settings["sonosNameVoetbalApp"] = sonosNameVoetbalApp;
-		settings["path"] = connectionPath;
-		settings["messageText"] = messageTextArray;
-		settings["messageSonosName"] = messageSonosName;
-		settings["messageVolume"] = messageVolume;
-		settings["voetbalTussenstanden"] = tmpVoetbal;
-		settings["spotifyStatus"] = spotifyStatus;
-		settings["spotifyRefreshToken"] = spotifyRefreshToken;
-		settings["spotifyDisplayName"] = spotifyDisplayName;
-		settings["recentlyPlayed"] = recentlyPlayed;
+		// rebuild from scratch: never carries over legacy keys (e.g. a pre-1.4.1 spotifyClientSecret),
+		// and never stores the client secret or any token here — those live in the token file only
+		settings = {
+			"showSonosIcon": tmpTrayIcon,
+			"sonosName": sonosName,
+			"sonosNameVoetbalApp": sonosNameVoetbalApp,
+			"path": connectionPath,
+			"messageText": messageTextArray,
+			"messageSonosName": messageSonosName,
+			"messageVolume": messageVolume,
+			"voetbalTussenstanden": tmpVoetbal,
+			"spotifyStatus": spotifyStatus,
+			"spotifyClientId": spotifyClientId,
+			"spotifyDisplayName": spotifyDisplayName,
+			"recentlyPlayed": recentlyPlayed
+		};
 
 		var saveFile = new XMLHttpRequest();
 		saveFile.open("PUT", "file:///mnt/data/tsc/sonos.userSettings.json");
@@ -217,43 +225,59 @@ App {
 		var saveFile = new XMLHttpRequest();
 		saveFile.open("PUT", "file:///mnt/data/tsc/sonos.spotifyToken.json");
 		saveFile.send(JSON.stringify({
-			"spotifyClientId": spotifyToken["spotifyClientId"],
-			"spotifyClientSecret": spotifyToken["spotifyClientSecret"],
+			"spotifyClientId": spotifyClientId,
+			"spotifyClientSecret": spotifyClientSecret,
 			"refresh_token": spotifyRefreshToken,
-			"access_token": spotifyToken["access_token"]
+			"access_token": spotifyAccessToken
 		}));
 	}
 
+	// loads the token file into the string properties; returns which fields were present
 	function readTokenFile() {
+		var found = { hasSecret: false, hasRefresh: false };
 		var tokenString = sonosTokenFile.read();
 		if (tokenString && tokenString.length > 2) {
 			try {
 				var tokenData = JSON.parse(tokenString);
-				if (tokenData["spotifyClientId"]) spotifyToken["spotifyClientId"] = tokenData["spotifyClientId"];
-				if (tokenData["spotifyClientSecret"]) spotifyToken["spotifyClientSecret"] = tokenData["spotifyClientSecret"];
-				if (tokenData["refresh_token"]) spotifyRefreshToken = tokenData["refresh_token"];
-				if (tokenData["access_token"]) spotifyToken["access_token"] = tokenData["access_token"];
-			} catch(e) {}
+				if (tokenData["spotifyClientId"]) spotifyClientId = tokenData["spotifyClientId"];
+				if (tokenData["spotifyClientSecret"]) { spotifyClientSecret = tokenData["spotifyClientSecret"]; found.hasSecret = true; }
+				if (tokenData["refresh_token"]) { spotifyRefreshToken = tokenData["refresh_token"]; found.hasRefresh = true; }
+				if (tokenData["access_token"]) spotifyAccessToken = tokenData["access_token"];
+			} catch(e) {
+				// deliberately not logging e: JSON parse errors can echo fragments of the (secret-bearing) input
+				console.log("sonos: invalid token file");
+			}
 		}
+		return found;
 	}
 
 	function readSettings() {
+		var legacySecret = "";
+		var legacyRefresh = "";
+		var migrated = false;
 		var settingsString = sonosSettingsFile.read();
 		try {
 			settings = JSON.parse(settingsString);
 			if (settings['showSonosIcon']) showSonosIcon = (settings['showSonosIcon'] == "true");
 			if (settings['sonosName']) sonosName = (settings['sonosName']);
 			if (settings['sonosNameVoetbalApp']) sonosNameVoetbalApp = (settings['sonosNameVoetbalApp']);
-			if (settings['messageVolume']) messageVolume = (settings['messageVolume']);
+			if (settings['messageVolume']) messageVolume = parseInt(settings['messageVolume']);
 			if (settings['messageSonosName']) messageSonosName = (settings['messageSonosName']);
 			if (settings['messageText']) messageTextArray = (settings['messageText']);
 			if (settings['voetbalTussenstanden']) playFootballScores = (settings['voetbalTussenstanden'] == "true");
 			if (settings['spotifyStatus']) spotifyStatus = settings['spotifyStatus'];
-			if (settings['spotifyClientId']) spotifyToken["spotifyClientId"] = settings['spotifyClientId'];
-			if (settings['spotifyClientSecret']) spotifyToken["spotifyClientSecret"] = settings['spotifyClientSecret'];
-			if (settings['spotifyRefreshToken']) spotifyRefreshToken = settings['spotifyRefreshToken'];
+			if (settings['spotifyClientId']) spotifyClientId = settings['spotifyClientId'];
 			if (settings['spotifyDisplayName']) spotifyDisplayName = settings['spotifyDisplayName'];
 			if (settings['recentlyPlayed']) recentlyPlayed = settings['recentlyPlayed'];
+			// pre-1.4.1 devices: secret/refresh token may still sit in the settings file;
+			// remember them as fallback (token file wins) and migrate them out below
+			if (settings['spotifyClientSecret']) { legacySecret = settings['spotifyClientSecret']; migrated = true; }
+			if (settings['spotifyRefreshToken']) { legacyRefresh = settings['spotifyRefreshToken']; migrated = true; }
+			delete settings['spotifyClientSecret'];
+			delete settings['spotifyRefreshToken'];
+
+			// never persist the old "click to select a zone" placeholder as a zone name
+			if (sonosNameVoetbalApp.indexOf("Klik om") == 0) sonosNameVoetbalApp = "";
 
 			if (settings['path']) {
 				connectionPath = (settings['path']);
@@ -269,19 +293,34 @@ App {
 			console.log("sonos: error parsing settings: " + e);
 		}
 
-		readTokenFile();   // token file overrides settings for refresh token
+		var tokenInfo = readTokenFile();   // token file overrides settings
+		if (legacySecret.length > 0 && !tokenInfo.hasSecret) spotifyClientSecret = legacySecret;
+		if (legacyRefresh.length > 0 && !tokenInfo.hasRefresh) spotifyRefreshToken = legacyRefresh;
+		if (migrated) {
+			// complete the migration: secrets/tokens to the token file, settings file rewritten without them
+			saveTokenFile();
+			saveSettings();
+		}
 
 		if (spotifyStatus == "configured" && spotifyRefreshToken.length > 0) {
 			startupTokenTimer.start();
 		}
 	}
 
+	// URL helpers; zone names must be encoded (spaces and special chars are common in room names)
+	function zoneUrl(zone, cmd) {
+		return "http://" + connectionPath + "/" + encodeURIComponent(zone) + "/" + cmd;
+	}
+
+	function sonosUrl(cmd) {
+		return zoneUrl(sonosName, cmd);
+	}
+
 	// Build the Spotify authorization URL for the user to visit
 	function buildSpotifyAuthUrl() {
-		var clientId = spotifyToken["spotifyClientId"];
 		var scope = "playlist-read-private%20playlist-read-collaborative";
 		var redirectUri = "https%3A%2F%2Fexample.com";
-		return "https://accounts.spotify.com/authorize?client_id=" + clientId +
+		return "https://accounts.spotify.com/authorize?client_id=" + encodeURIComponent(spotifyClientId) +
 			"&response_type=code" +
 			"&redirect_uri=" + redirectUri +
 			"&scope=" + scope;
@@ -308,19 +347,18 @@ App {
 							spotifyStatus = "error";
 							return;
 						}
-						spotifyToken["access_token"] = response["access_token"];
+						spotifyAccessToken = response["access_token"];
 						spotifyRefreshToken = response["refresh_token"];
 						spotifyStatus = "configured";
 						saveSettings();
 						saveTokenFile();
 						fetchSpotifyUserProfile();
-						fetchSpotifyPlaylists();
 						tokenRefreshTimer.stop();
 						tokenRefreshTimer.interval = 3300000;
 						tokenRefreshTimer.start();
 					} catch(e) {
 						spotifyStatus = "error";
-						console.log("spotify: error parsing token response: " + e);
+						console.log("spotify: malformed token response");
 					}
 				} else {
 					spotifyStatus = "error";
@@ -332,12 +370,15 @@ App {
 			"&redirect_uri=https%3A%2F%2Fexample.com";
 		xmlhttp.open("POST", "https://accounts.spotify.com/api/token");
 		xmlhttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-		xmlhttp.setRequestHeader("Authorization", "Basic " + customBtoa(spotifyToken["spotifyClientId"] + ":" + spotifyToken["spotifyClientSecret"]));
+		xmlhttp.setRequestHeader("Authorization", "Basic " + customBtoa(spotifyClientId + ":" + spotifyClientSecret));
 		xmlhttp.send(body);
 	}
 
 	// Refresh the access token using the stored refresh token
 	function refreshSpotifyAccessToken() {
+		if (spotifyClientId.length == 0 || spotifyClientSecret.length == 0 || spotifyRefreshToken.length == 0) {
+			return;
+		}
 		var xmlhttp = new XMLHttpRequest();
 		xmlhttp.timeout = 10000;
 		xmlhttp.onerror = function() { console.log("spotify: refreshSpotifyAccessToken network error"); }
@@ -348,33 +389,35 @@ App {
 					try {
 						var response = JSON.parse(xmlhttp.responseText);
 						if (!response["access_token"]) return;
-						spotifyToken["access_token"] = response["access_token"];
+						spotifyAccessToken = response["access_token"];
 						if (response["refresh_token"]) {
 							spotifyRefreshToken = response["refresh_token"];
 						}
 						saveTokenFile();
-						fetchSpotifyPlaylists();
-						tokenRefreshTimer.stop();
-						tokenRefreshTimer.interval = 3300000;
-						tokenRefreshTimer.start();
 					} catch(e) {
-						console.log("spotify: error parsing refresh token response: " + e);
+						console.log("spotify: malformed refresh response");
 					}
 				} else if (xmlhttp.status == 400 || xmlhttp.status == 401) {
 					// Definitively invalid token — require re-login
 					spotifyStatus = "toBeConfigured";
 					spotifyRefreshToken = "";
+					spotifyAccessToken = "";
 					saveSettings();
 					saveTokenFile();
 				}
-				// Any other status (network error, timeout) — keep token, retry next timer tick
+				// Any other status (network error, timeout) — keep token, retry on next timer tick
 			}
 		}
 		var body = "grant_type=refresh_token&refresh_token=" + encodeURIComponent(spotifyRefreshToken);
 		xmlhttp.open("POST", "https://accounts.spotify.com/api/token");
 		xmlhttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-		xmlhttp.setRequestHeader("Authorization", "Basic " + customBtoa(spotifyToken["spotifyClientId"] + ":" + spotifyToken["spotifyClientSecret"]));
+		xmlhttp.setRequestHeader("Authorization", "Basic " + customBtoa(spotifyClientId + ":" + spotifyClientSecret));
 		xmlhttp.send(body);
+		// (re)schedule the next refresh unconditionally — also after transient failures,
+		// otherwise a network outage at boot would leave Spotify dead until a reboot
+		tokenRefreshTimer.stop();
+		tokenRefreshTimer.interval = 3300000;
+		tokenRefreshTimer.start();
 	}
 
 	// Fetch user's display name from Spotify profile
@@ -397,51 +440,19 @@ App {
 			}
 		}
 		xmlhttp.open("GET", "https://api.spotify.com/v1/me");
-		xmlhttp.setRequestHeader("Authorization", "Bearer " + spotifyToken["access_token"]);
+		xmlhttp.setRequestHeader("Authorization", "Bearer " + spotifyAccessToken);
 		xmlhttp.send();
 	}
 
-	// Fetch the user's Spotify playlists and store as [{name, uri}]
-	function fetchSpotifyPlaylists() {
-		var xmlhttp = new XMLHttpRequest();
-		xmlhttp.timeout = 15000;
-		xmlhttp.onerror = function() { console.log("spotify: fetchSpotifyPlaylists network error"); }
-		xmlhttp.ontimeout = function() { console.log("spotify: fetchSpotifyPlaylists timeout"); }
-		xmlhttp.onreadystatechange = function() {
-			if (xmlhttp.readyState == 4) {
-				if (xmlhttp.status == 200) {
-					try {
-						var response = JSON.parse(xmlhttp.responseText);
-						var result = [];
-						var items = response["items"];
-						if (items) {
-							for (var i = 0; i < items.length; i++) {
-								if (items[i] && items[i]["name"] && items[i]["uri"]) {
-									result.push({name: items[i]["name"], uri: items[i]["uri"]});
-								}
-							}
-						}
-						spotifyPlaylists = result;
-					} catch(e) {
-						console.log("spotify: error parsing playlists: " + e);
-					}
-				}
-			}
-		}
-		xmlhttp.open("GET", "https://api.spotify.com/v1/me/playlists?limit=50");
-		xmlhttp.setRequestHeader("Authorization", "Bearer " + spotifyToken["access_token"]);
-		xmlhttp.send();
-	}
-
-	// Disconnect Spotify — clear all tokens and reset status
+	// Disconnect Spotify — clear user tokens and reset status (keeps clientId/secret for easy re-login)
 	function disconnectSpotify() {
 		spotifyStatus = "toBeConfigured";
 		spotifyRefreshToken = "";
+		spotifyAccessToken = "";
 		spotifyDisplayName = "";
-		spotifyPlaylists = [];
-		spotifyToken["access_token"] = "";
 		tokenRefreshTimer.stop();
 		saveSettings();
+		saveTokenFile();
 	}
 
 	function addToRecentlyPlayed(name, uri) {
@@ -456,61 +467,107 @@ App {
 		saveSettings();
 	}
 
+	// base64 of ASCII/Latin-1 strings (client id + secret). ES5 syntax only.
 	function customBtoa(str) {
-  		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-  		let encoded = '';
-  		let i = 0;
+		var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+		var encoded = '';
+		var i = 0;
 
-  		while (i < str.length) {
-  			const c1 = str.charCodeAt(i++);
-			const hasC2 = i < str.length;
-    			const c2 = hasC2 ? str.charCodeAt(i++) : NaN;
-			const hasC3 = i < str.length;
-    			const c3 = hasC3 ? str.charCodeAt(i++) : NaN;
+		while (i < str.length) {
+			var c1 = str.charCodeAt(i++);
+			var hasC2 = i < str.length;
+			var c2 = hasC2 ? str.charCodeAt(i++) : 0;
+			var hasC3 = i < str.length;
+			var c3 = hasC3 ? str.charCodeAt(i++) : 0;
 
-    			const e1 = c1 >> 2;
-    			const e2 = ((c1 & 3) << 4) | (c2 >> 4);
-    			const e3 = ((c2 & 15) << 2) | (c3 >> 6);
-    			const e4 = c3 & 63;
+			var e1 = c1 >> 2;
+			var e2 = ((c1 & 3) << 4) | (c2 >> 4);
+			var e3 = ((c2 & 15) << 2) | (c3 >> 6);
+			var e4 = c3 & 63;
 
-    			if (!hasC2) {
-      				encoded += chars.charAt(e1) + chars.charAt(e2) + '==';
-    			} else if (!hasC3) {
-      				encoded += chars.charAt(e1) + chars.charAt(e2) + chars.charAt(e3) + '=';
-    			} else {
-      				encoded += chars.charAt(e1) + chars.charAt(e2) + chars.charAt(e3) + chars.charAt(e4);
-    			}
-  		}
+			if (!hasC2) {
+				encoded += chars.charAt(e1) + chars.charAt(e2) + '==';
+			} else if (!hasC3) {
+				encoded += chars.charAt(e1) + chars.charAt(e2) + chars.charAt(e3) + '=';
+			} else {
+				encoded += chars.charAt(e1) + chars.charAt(e2) + chars.charAt(e3) + chars.charAt(e4);
+			}
+		}
 
-  		return encoded;
+		return encoded;
+	}
+
+	// Fire-and-forget GET; callback(parameter) runs on HTTP 200 only,
+	// optional done() runs at completion regardless of status.
+	function apiGet(request, callback, parameter, done) {
+		var xmlhttp = new XMLHttpRequest();
+		xmlhttp.timeout = 4000;
+		xmlhttp.onerror = function() {
+			if (typeof(done) === 'function') { done(); }
+		}
+		xmlhttp.ontimeout = function() {
+			if (typeof(done) === 'function') { done(); }
+		}
+		xmlhttp.onreadystatechange = function() {
+			if (xmlhttp.readyState == 4) {
+				if (xmlhttp.status == 200) {
+					if (typeof(callback) === 'function') {
+						callback(parameter);
+					}
+				}
+				if (typeof(done) === 'function') { done(); }
+			}
+		}
+		xmlhttp.open("GET", request, true);
+		xmlhttp.send();
+	}
+
+	Timer {
+		id: stateWatchdog
+		interval: 15000
+		repeat: false
+		running: false
+		onTriggered: {
+			// xhr timeout support is unreliable on this Qt build; if a poll neither
+			// completed nor errored, assume it is stuck and allow the next one
+			p.stateInFlight = false;
+			console.log("sonos: state poll watchdog reset");
+		}
 	}
 
 	function readSonosState() {
+		if (p.stateInFlight) { return; }
+		p.stateInFlight = true;
+		stateWatchdog.restart();
 		var xmlhttp = new XMLHttpRequest();
 		xmlhttp.timeout = 4000;
-		xmlhttp.onerror = function() { console.log("sonos: readSonosState network error"); }
-		xmlhttp.ontimeout = function() { console.log("sonos: readSonosState timeout"); }
+		xmlhttp.onerror = function() { p.stateInFlight = false; stateWatchdog.stop(); console.log("sonos: readSonosState network error"); }
+		xmlhttp.ontimeout = function() { p.stateInFlight = false; stateWatchdog.stop(); console.log("sonos: readSonosState timeout"); }
 		xmlhttp.onreadystatechange=function() {
 			if (xmlhttp.readyState == 4) {
+				p.stateInFlight = false;
+				stateWatchdog.stop();
 				if (xmlhttp.status == 200) {
 					try {
 						var response = JSON.parse(xmlhttp.responseText);
-						if (response['currentTrack']['type'] == "track"){
+						var currentTrack = response['currentTrack'] || {};
+						if (currentTrack['type'] == "track"){
 							showSlider = true;
-							showSliderTime = true;
 							actualArtist = "";
 							actualTitle = "";
-							if (response['currentTrack']['title']) actualTitle = response['currentTrack']['title'];
-							if (response['currentTrack']['artist']) actualArtist = response['currentTrack']['artist'];
-							if (response['currentTrack']['duration']) trackDuration = response['currentTrack']['duration'];
-							if (response['elapsedTime']) {
-								if (!mediaScreen.positionIndicatorDragActive) {
+							if (currentTrack['title']) actualTitle = currentTrack['title'];
+							if (currentTrack['artist']) actualArtist = currentTrack['artist'];
+							if (currentTrack['duration']) trackDuration = currentTrack['duration'];
+							if (typeof response['elapsedTime'] == 'number' && trackDuration > 0) {
+								if (!mediaScreen || !mediaScreen.positionIndicatorDragActive) {
 									trackElapsedTime = response['elapsedTime'];
-									mediaScreen.positionIndicatorX = Math.floor((trackElapsedTime / trackDuration) * mediaScreen.positionIndicatorWidth);
+									if (mediaScreen) {
+										mediaScreen.positionIndicatorX = Math.floor((trackElapsedTime / trackDuration) * mediaScreen.positionIndicatorWidth);
+									}
 								}
 							}
-							if ('absoluteAlbumArtUri' in response['currentTrack']) {
-								var tmpNowPlayingImage = response['currentTrack']['absoluteAlbumArtUri'].replace("https://", "http://");
+							if ('absoluteAlbumArtUri' in currentTrack) {
+								var tmpNowPlayingImage = currentTrack['absoluteAlbumArtUri'].replace("https://", "http://");
 							} else {
 								var tmpNowPlayingImage = "";
 							}
@@ -518,30 +575,38 @@ App {
 								nowPlayingImage = tmpNowPlayingImage;
 							}
 						}
-						if (response['currentTrack']['type'] == "radio"){
+						if (currentTrack['type'] == "radio"){
 							showSlider = false;
-							showSliderTime = false;
-							actualArtist = response['currentTrack']['stationName'];
+							actualArtist = currentTrack['stationName'] || "";
 							actualTitle = "";
 							if (response['playbackState'] == "PLAYING") {
-								actualTitle = response['currentTrack']['title'];
+								actualTitle = currentTrack['title'] || "";
 							}
-							if ('absoluteAlbumArtUri' in response['currentTrack']) {
-								var tmpNowPlayingImage = response['currentTrack']['absoluteAlbumArtUri'].replace("https://", "http://");
+							if ('absoluteAlbumArtUri' in currentTrack) {
+								var tmpRadioImage = currentTrack['absoluteAlbumArtUri'].replace("https://", "http://");
 							} else {
-								var tmpNowPlayingImage = "";
+								var tmpRadioImage = "";
 							}
-							if (tmpNowPlayingImage !== nowPlayingImage) {
-								nowPlayingImage = tmpNowPlayingImage;
+							if (tmpRadioImage !== nowPlayingImage) {
+								nowPlayingImage = tmpRadioImage;
 							}
+						}
+						if (currentTrack['type'] != "track" && currentTrack['type'] != "radio") {
+							// line-in, no queue loaded etc: don't keep showing the previous track
+							actualArtist = "";
+							actualTitle = "";
+							showSlider = false;
+							if (nowPlayingImage.length > 0) nowPlayingImage = "";
 						}
 						if (actualTitle.substring(0,10) == "x-sonosapi") {
 							actualTitle = "";
 						}
 
 						playbackState = response['playbackState'];
-						shuffleButtonVisible = response['playMode']['shuffle'];
-						shuffleOnButtonVisible = !shuffleButtonVisible;
+						var playMode = response['playMode'] || {};
+						var shuffleIsOn = !!playMode['shuffle'];
+						shuffleButtonVisible = shuffleIsOn;
+						shuffleOnButtonVisible = !shuffleIsOn;
 						pauseButtonVisible = (playbackState == "PLAYING");
 						playButtonVisible = !pauseButtonVisible;
 						if (pauseButtonVisible) {
@@ -555,30 +620,16 @@ App {
 				}
 			}
 		}
-		xmlhttp.open("GET", "http://"+connectionPath+"/"+encodeURIComponent(sonosName)+"/state");
+		xmlhttp.open("GET", sonosUrl("state"), true);
 		xmlhttp.send();
-	}
-
-	function simpleSynchronous(request, callback, parameter) {
-		var xmlhttp = new XMLHttpRequest();
-		xmlhttp.open("GET", request, true);
-		xmlhttp.timeout = 1500;
-		xmlhttp.send();
-		xmlhttp.onreadystatechange=function() {
-			if (xmlhttp.readyState == 4) {
-				if (xmlhttp.status == 200) {
-					if (typeof(callback) === 'function') {
-						callback(parameter);
-					}
-				}
-			}
-		}
 	}
 
 	function addTrackTimer() {
 		trackElapsedTime = trackElapsedTime + 1;
 		if (trackElapsedTime > trackDuration) trackElapsedTime = trackDuration;
-		mediaScreen.positionIndicatorX = Math.floor((trackElapsedTime / trackDuration) * mediaScreen.positionIndicatorWidth);
+		if (mediaScreen && trackDuration > 0) {
+			mediaScreen.positionIndicatorX = Math.floor((trackElapsedTime / trackDuration) * mediaScreen.positionIndicatorWidth);
+		}
 	}
 
 	Timer {

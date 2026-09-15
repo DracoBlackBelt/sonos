@@ -3,7 +3,7 @@ import qb.components 1.0
 import BasicUIControls 1.0;
 
 Screen {
-	id: mediaSelectZoneScreen
+	id: msgScreen
 	screenTitle: "Audioberichten"
 
 	property bool waitForMessageCompletion : false
@@ -17,10 +17,11 @@ Screen {
 
 	function playMessage(appName, appArguments) {
 
-		if ((appName == "sonos") && app.playFootballScores) {	
+		if ((appName == "sonos") && app.playFootballScores && app.sonosNameVoetbalApp.length > 0) {
 			var xmlhttp = new XMLHttpRequest();
 			xmlhttp.timeout = 5000;
-			xmlhttp.open("GET", "http://"+app.connectionPath+"/"+encodeURIComponent(app.sonosNameVoetbalApp)+"/say/" + encodeURIComponent(appArguments) + "/nl-nl/" + app.messageVolume);
+			xmlhttp.onerror = function() { console.log("sonos: playMessage network error"); }
+			xmlhttp.open("GET", app.zoneUrl(app.sonosNameVoetbalApp, "say/" + encodeURIComponent(appArguments) + "/nl-nl/" + app.messageVolume), true);
 			xmlhttp.send();
 		}
 	}
@@ -55,7 +56,10 @@ Screen {
 							zoneNameModel.clear();
 							zoneNameModel.append({zoneName: "Alle"});
 							for (var i = 0; i < response.length; i++) {
-								zoneNameModel.append({zoneName: response[i]["coordinator"]["roomName"]});
+								var roomName = (response[i]["coordinator"] && response[i]["coordinator"]["roomName"]) ? response[i]["coordinator"]["roomName"] : "";
+								if (roomName.length > 0) {
+									zoneNameModel.append({zoneName: roomName});
+								}
 							}
 						}
 					} catch(e) {
@@ -88,7 +92,7 @@ Screen {
 	function saveVolume(text) {
 
 		if (text) {
-			app.messageVolume = text;
+			app.messageVolume = parseInt(text);
 			saveVolumeLabel.inputText = app.messageVolume;
 			app.saveSettings();
 		}
@@ -138,9 +142,10 @@ Screen {
 		cellHeight: isNxt ? 50 : 40
 
 		anchors {
-			fill: parent
 			top: txtBox.bottom
 			left: txtBox.left
+			right: parent.right
+			bottom: parent.bottom
 			topMargin: isNxt ? 50 : 40
 		}
 	}
@@ -249,9 +254,9 @@ Screen {
 						qdialog.showDialog(qdialog.SizeSmall, "Sonos mededeling", "Time-out bij versturen bericht", "Sluiten");
 					}
 					if (app.messageSonosName == "Alle") {
-						xmlhttp.open("GET", "http://"+app.connectionPath+"/sayall/" + encodeURIComponent(item) + "/nl-nl/" + app.messageVolume);
+						xmlhttp.open("GET", "http://"+app.connectionPath+"/sayall/" + encodeURIComponent(item) + "/nl-nl/" + app.messageVolume, true);
 					} else {
-						xmlhttp.open("GET", "http://"+app.connectionPath+"/"+encodeURIComponent(app.messageSonosName)+"/say/" + encodeURIComponent(item) + "/nl-nl/" + app.messageVolume);
+						xmlhttp.open("GET", app.zoneUrl(app.messageSonosName, "say/" + encodeURIComponent(item) + "/nl-nl/" + app.messageVolume), true);
 					}
 					xmlhttp.onreadystatechange=function() {
 						if (xmlhttp.readyState == 4) {

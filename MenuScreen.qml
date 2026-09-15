@@ -13,9 +13,6 @@ Screen {
 	onShown: {
 		showSonosIconToggle.isSwitchedOn = app.showSonosIcon;
 		voetbalToggle.isSwitchedOn = app.playFootballScores;
-		if (app.playFootballScores) {
-			if (app.sonosNameVoetbalApp.length < 2) app.sonosNameVoetbalApp = "Klik om een zone te selekteren voor de standen";
-		}
 		addCustomTopRightButton("Check Connection");
 		poortnummerLabel.inputText = app.poortnummer;
 		ipadresLabel.inputText = app.ipadresLabel;
@@ -23,9 +20,20 @@ Screen {
 
 	onCustomButtonClicked: {
 		var xmlhttp = new XMLHttpRequest();
+		var reported = false;
 		xmlhttp.timeout = 5000;
-		xmlhttp.onerror = function() { console.log("sonos: MenuScreen check connection network error"); }
-		xmlhttp.ontimeout = function() { console.log("sonos: MenuScreen check connection timeout"); }
+		xmlhttp.onerror = function() {
+			if (!reported) {
+				reported = true;
+				showConnectionDialog(qsTr("Geen verbinding"), qsTr("De Sonos HTTP API is niet bereikbaar op <b>") + app.connectionPath + "</b><br><br>Controleer het ip-adres/poortnummer en of de API-server draait.");
+			}
+		}
+		xmlhttp.ontimeout = function() {
+			if (!reported) {
+				reported = true;
+				showConnectionDialog(qsTr("Time-out"), qsTr("De Sonos HTTP API op <b>") + app.connectionPath + "</b> reageert niet binnen 5 seconden.");
+			}
+		}
 		xmlhttp.onreadystatechange=function() {
 			if (xmlhttp.readyState == 4) {
 				if (xmlhttp.status == 200) {
@@ -33,19 +41,36 @@ Screen {
 						var response = JSON.parse(xmlhttp.responseText);
 						if (response.length > 0) {
 							app.sonosName = response[0]["coordinator"]["roomName"];
+							app.saveSettings();
+							app.updateAvailableZones();   // refreshes sonoslist + group flag
 							hide();
 							if (response.length > 1) {
-								app.mediaSelectZone.show();
+								if (app.mediaSelectZone) {
+									app.zoneToSelect = "sonosName";
+									app.mediaSelectZone.show();
+								}
 							}
+						} else {
+							if (!reported) { reported = true; showConnectionDialog(qsTr("Geen zones gevonden"), qsTr("De Sonos HTTP API draait, maar meldt geen speakers.")); }
 						}
 					} catch(e) {
 						console.log("sonos: error parsing zones in MenuScreen: " + e);
+						if (!reported) { reported = true; showConnectionDialog(qsTr("Ongeldig antwoord"), qsTr("De Sonos HTTP API gaf een onverwacht antwoord.")); }
 					}
+				} else if (xmlhttp.status > 0) {
+					if (!reported) { reported = true; showConnectionDialog(qsTr("Fout"), qsTr("De Sonos HTTP API gaf statuscode ") + xmlhttp.status + "."); }
+				} else {
+					// status 0: connection failed; some Qt builds deliver this instead of onerror
+					if (!reported) { reported = true; showConnectionDialog(qsTr("Geen verbinding"), qsTr("De Sonos HTTP API is niet bereikbaar op <b>") + app.connectionPath + "</b><br><br>Controleer het ip-adres/poortnummer en of de API-server draait."); }
 				}
 			}
 		}
 		xmlhttp.open("GET", "http://"+app.connectionPath+"/zones");
 		xmlhttp.send();
+	}
+
+	function showConnectionDialog(title, content) {
+		qdialog.showDialog(qdialog.SizeLarge, title, content, qsTr("Sluiten"));
 	}
 
 	//Next part is to have the possibility to use the keyboard for the Hostname/IP Address field and also for the portnumber!
@@ -249,7 +274,6 @@ Screen {
 		onSelectedChangedByUser: {
 			if (isSwitchedOn) {
 				app.saveplayScores("Yes")
-				if (app.sonosNameVoetbalApp.length < 2) app.sonosNameVoetbalApp = "Klik om een zone te selekteren voor de standen"
 			} else {
 				app.saveplayScores("No")
 			}
@@ -258,7 +282,7 @@ Screen {
 
 	StandardButton {
 		id: btnZone
-		text: app.sonosNameVoetbalApp
+		text: app.sonosNameVoetbalApp.length > 0 ? app.sonosNameVoetbalApp : qsTr("Klik om een zone te selecteren voor de standen")
 		fontPixelSize: isNxt ? 25 : 20
 		anchors {
 			bottom: voetbalToggle.bottom
