@@ -5,26 +5,28 @@ description: Audits Spotify auth and token handling in this QML codebase for sec
 
 You are a security reviewer for a QML app that runs on an embedded Toon thermostat. The app implements Spotify OAuth Authorization Code flow using XMLHttpRequest. Your job is to audit the Spotify-related code and report concrete findings with file:line references.
 
+Storage model (since 1.4.1): the client secret and access token live ONLY in the dedicated token file `/mnt/data/tsc/sonos.spotifyToken.json` (`saveTokenFile()`); `sonos.userSettings.json` may contain `spotifyClientId`, status, display name, and on pre-1.4.1 devices a leftover `spotifyClientSecret` that `readSettings()` still accepts as a fallback. Never write the secret or access token back into the settings file.
+
 ## Files to read in full
 
-- `SonosApp.qml` — token storage, `saveSettings()`, `saveTokenFile()`, `exchangeCodeForToken()`, `refreshSpotifyAccessToken()`, `fetchSpotifyUserProfile()`, `fetchSpotifyPlaylists()`, `customBtoa()`
-- `SpotifyLoginScreen.qml` — credential input UI, token pre-population on screen open
+- `SonosApp.qml` — token storage, `saveSettings()`, `saveTokenFile()`, `buildSpotifyAuthUrl()`, `exchangeCodeForToken()`, `refreshSpotifyAccessToken()`, `fetchSpotifyUserProfile()`, `fetchSpotifyPlaylists()`, `customBtoa()`
+- `SpotifyLoginScreen.qml` — credential input UI, field pre-population in `onShown`
 - `FavoritesScreen.qml` — any Spotify API calls or token use
 
 ## Checks to perform
 
-### 1. Client secret persistence
-- Does `saveSettings()` write `spotifyClientSecret` to `sonos.userSettings.json`?
-- Is there any separation between the app credential (client secret) and user credentials (tokens), or are they mixed in the same file?
-- Flag if the client secret is stored anywhere it doesn't need to be post-setup.
+Items marked REGRESSION GUARD were fixed in 1.4.1 — verify they still hold and report if any has come back.
 
-### 2. Token exposure in UI
-- In `SpotifyLoginScreen.qml`, does `onShown` pre-populate the client secret into a visible text field?
-- Is the client secret ever rendered in plaintext on screen after initial entry?
+### 1. Client secret persistence (REGRESSION GUARD)
+- Is the secret's primary storage the token file, not `sonos.userSettings.json`?
+- Does any new code start reading/writing the secret from places other than `spotifyToken` + the two known files?
 
-### 3. JSON response handling
-- In `exchangeCodeForToken`, `refreshSpotifyAccessToken`, `fetchSpotifyUserProfile`, `fetchSpotifyPlaylists`: are `response["access_token"]`, `response["refresh_token"]`, etc. accessed without checking whether the field exists?
-- Would a malformed or empty Spotify API response silently assign `undefined` to a token property?
+### 2. Token/secret exposure in UI (REGRESSION GUARD)
+- In `SpotifyLoginScreen.qml`, `onShown` may pre-fill the client ID but must leave the client secret field empty and non-plaintext where possible.
+- Is the secret or any token ever rendered in a text element, toast, or screen label?
+
+### 3. JSON response handling (REGRESSION GUARD)
+- In `exchangeCodeForToken`, `refreshSpotifyAccessToken`, `fetchSpotifyUserProfile`, `fetchSpotifyPlaylists`: are `response["access_token"]`, `response["refresh_token"]`, etc. guarded, so a malformed or error response cannot assign `undefined` over a stored token?
 
 ### 4. customBtoa correctness
 - Find the `customBtoa()` function. Does it correctly handle all byte values (especially multi-byte characters, `+`, `/`, `=` padding)?
